@@ -1,0 +1,9 @@
+resources/*
+data/*
+eval/*
+papers/*
+resources/*
+output/*
+.idea/*
+LabProjectAHLT.pdf
+src/analysis.csv
