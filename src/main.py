@@ -23,16 +23,6 @@ def get_sentence_entities_info(child):
     return child.get('id'), (child.get('charOffset')).split("-")
 
 
-def chem_tokenize(text):
-    cwt = ChemWordTokenizer()
-    tokens = cwt.tokenize(text)
-    token_indexs = cwt.span_tokenize(text)
-    tokenized_info = []
-    for token_index, token in zip(token_indexs, tokens):
-        tokenized_info.append((token, token_index[0], token_index[1] - 1))
-    return tokenized_info
-
-
 def tokenize(text):
     tokenized_sent = word_tokenize(text)
     tokenized_info = []
@@ -285,8 +275,10 @@ def check_common_ancestor(ancestor_token):
     return 0, 'null'
 
 
-def check_interaction(analysis, entities, id_e1, id_e2, sentence, truth_ddi, dic, good_dic):
-    (is_ddi, ddi_type) = rules_without_dependency(sentence)
+def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, dic, good_dic):
+    inbetween_text = extract_inbetween_text(analysis, entities, id_e1, id_e2)
+    (is_ddi, ddi_type) = rules_without_dependency(inbetween_text)
+
     if is_ddi:
         return is_ddi, ddi_type
     if analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest']:
@@ -323,13 +315,32 @@ def check_interaction(analysis, entities, id_e1, id_e2, sentence, truth_ddi, dic
     return 0, 'null'
 
 
+def extract_inbetween_text(analysis, entities, id_e1, id_e2):
+    index_drug1 = index_drug2 = 0
+    sentece_analysis = [None] * (len(analysis.nodes) - 1)
+    for i_node in range(1, len(analysis.nodes)):
+        current_node = analysis.nodes[i_node]
+        address = current_node["address"]
+        word = current_node["word"]
+        start = current_node["start_off"]
+        end = current_node["end_off"]
+        end_drug1 = entities[id_e1][0][1] if len(entities[id_e1][0] == 2) else entities[id_e1][0][3]
+        if end == end_drug1:
+            index_drug1 = i_node - 1
+        if start == entities[id_e2][0][0]:
+            index_drug2 = i_node - 1
+        sentece_analysis[address - 1] = word
+    inbetween_text = ' '.join(sentece_analysis[index_drug1:index_drug2])
+    return inbetween_text
+
+
 def rules_without_dependency(sentence):
     is_ddi = 0
     ddi_type = "null"
 
     effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
 
-    if any(x in sentence for x in effect_list):
+    if "effect" in sentence: #any(x in sentence for x in effect_list):
         is_ddi = 1
         ddi_type = "effect"
     if "should" in sentence:
@@ -338,7 +349,7 @@ def rules_without_dependency(sentence):
     if "increase" in sentence or "decrease" in sentence or "reduce" in sentence:
         is_ddi = 1
         ddi_type = "mechanism"
-    if "interact" in sentence or "interaction" in sentence:
+    if "interact" in sentence:
         is_ddi = 1
         ddi_type = "int"
 
@@ -347,7 +358,7 @@ def rules_without_dependency(sentence):
 
 if __name__ == '__main__':
     output_file_name = "task9.2_out_1.txt"
-    input_directory = '../data/Train/'
+    input_directory = '../data/Test-DDI/'
 
     output_file = open('../output/' + output_file_name, 'w+')
     # get_training_statistic()
@@ -389,31 +400,31 @@ if __name__ == '__main__':
             for pair in child.findall('pair'):
                 id_e1 = pair.get('e1')
                 id_e2 = pair.get('e2')
-                type = pair.get('type')
+                # type = pair.get('type')
+                #
+                # types.append(type)
+                # offset_1 = entities[id_e1][0]
+                # offset_2 = entities[id_e2][0]
+                # drug_1 = drug_2 = ""
+                # end = 0
+                # start = offset_1[0]
+                # if len(offset_1) > 2:
+                #     drug_1 = text[offset_1[0]:offset_1[1] + 1] + text[offset_1[2]:offset_1[3] + 1]
+                # else:
+                #     drug_1 = text[offset_1[0]:offset_1[1] + 1]
+                # if len(offset_2) > 2:
+                #     drug_2 = text[offset_2[0]:offset_2[1] + 1] + text[offset_2[2]:offset_2[3] + 1]
+                #     end = offset_2[3]
+                # else:
+                #     drug_2 = text[offset_2[0]:offset_2[1] + 1]
+                #     end = offset_2[1]
+                # drugs_interact.append((drug_1, drug_2))
+                # distance.append(end - start)
+                # sentence = text[start:end]
+                # count_words_between.append(len(sentence.split()) - 2)
+                # sentences.append(sentence)
 
-                types.append(type)
-                offset_1 = entities[id_e1][0]
-                offset_2 = entities[id_e2][0]
-                drug_1 = drug_2 = ""
-                end = 0
-                start = offset_1[0]
-                if len(offset_1) > 2:
-                    drug_1 = text[offset_1[0]:offset_1[1] + 1] + text[offset_1[2]:offset_1[3] + 1]
-                else:
-                    drug_1 = text[offset_1[0]:offset_1[1] + 1]
-                if len(offset_2) > 2:
-                    drug_2 = text[offset_2[0]:offset_2[1] + 1] + text[offset_2[2]:offset_2[3] + 1]
-                    end = offset_2[3]
-                else:
-                    drug_2 = text[offset_2[0]:offset_2[1] + 1]
-                    end = offset_2[1]
-                drugs_interact.append((drug_1, drug_2))
-                distance.append(end - start)
-                sentence = text[start:end]
-                count_words_between.append(len(sentence.split()) - 2)
-                sentences.append(sentence)
-
-                (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2, sentence, pair.get('ddi'), dic,
+                (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2, pair.get('ddi'), dic,
                                                        good_dic)
 
                 print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
