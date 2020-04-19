@@ -1,33 +1,210 @@
 import matplotlib.pyplot as plt
 
-false_pairs = {2: 2311, 4: 1397, 6: 1124, 5: 967, 7: 928, 8: 922, 3: 911, 10: 796, 9: 771, 12: 720, 11: 693, 14: 623, 13: 575,
-               15: 490, 16: 487, 17: 476, 18: 463, 20: 400, 19: 398, 21: 346, 22: 333, 24: 290, 23: 281, 26: 250, 25: 235,
-               28: 219, 30: 192, 27: 190, 32: 184, 29: 163, 34: 144, 31: 132, 37: 112, 35: 111, 36: 111, 33: 111, 38: 104,
-               42: 100, 1: 95, 39: 95, 44: 95, 46: 93, 40: 92, 41: 86, 48: 77, 43: 65, 49: 65, 45: 64, 0: 63, 52: 59, 50: 57,
-               60: 55, 54: 54, 56: 52, 53: 51, 51: 51, 58: 50, 70: 43, 63: 42, 47: 41, 55: 41, 62: 39, 66: 37, 72: 37, 64: 37,
-               67: 34, 74: 34, 65: 34, 57: 33, 59: 33, 76: 32, 68: 31, 61: 30, 69: 26, 78: 23, 81: 22, 79: 21, 80: 21, 71: 20,
-               73: 18, 77: 18, 85: 18, 82: 18, 84: 18, 83: 17, 86: 17, 75: 16, 87: 16, 88: 14, 90: 14, 93: 14, 89: 14, 91: 12,
-               95: 11, 97: 11, 99: 10, 92: 10, 96: 9, 104: 9, 101: 8, 94: 8, 98: 8, 106: 8, 107: 7, 118: 7, 102: 7, 100: 7,
-               103: 7, 110: 6, 116: 6, 109: 6, 111: 6, 113: 6, 120: 6, 105: 6, 108: 6, 112: 5, 114: 5, 130: 5, 125: 5, 123: 4,
-               128: 4, 115: 4, 122: 4, 135: 3, 121: 2, 133: 2, 127: 2, 132: 2, 117: 2, 124: 2, 119: 1, 138: 1, 139: 1, 145: 1,
-               136: 1, 142: 1, 134: 1, 140: 1, 131: 1, 137: 1, 129: 1, 126: 1}
-true_pairs = {2: 321, 7: 232, 6: 199, 8: 193, 5: 182, 11: 180, 9: 175, 4: 160, 3: 157, 10: 156, 12: 150, 14: 125, 13: 114,
-              15: 94, 16: 93, 18: 84, 17: 72, 19: 71, 20: 62, 23: 55, 21: 52, 22: 49, 24: 41, 27: 40, 25: 37, 26: 32, 29: 28,
-              30: 26, 28: 25, 35: 22, 33: 20, 32: 19, 31: 18, 34: 13, 38: 13, 37: 12, 36: 11, 40: 10, 42: 10, 39: 10, 41: 9,
-              45: 8, 0: 7, 49: 7, 44: 7, 48: 7, 47: 6, 43: 6, 46: 5, 51: 5, 54: 4, 58: 4, 65: 3, 75: 3, 52: 3, 87: 3, 89: 3,
-              93: 3, 97: 3, 111: 3, 53: 2, 57: 2, 60: 2, 62: 2, 72: 2, 61: 2, 82: 2, 85: 2, 91: 2, 100: 2, 102: 2, 109: 2,
-              113: 2, 56: 2, 67: 2, 70: 2, 95: 2, 50: 2, 64: 1, 66: 1, 71: 1, 73: 1, 81: 1, 105: 1, 107: 1, 119: 1, 122: 1,
-              124: 1, 126: 1, 128: 1, 131: 1, 133: 1, 135: 1, 140: 1, 142: 1, 145: 1, 147: 1, 150: 1, 151: 1, 157: 1, 69: 1,
-              55: 1, 59: 1, 63: 1, 77: 1, 84: 1, 99: 1, 101: 1, 103: 1, 108: 1, 68: 1, 74: 1, 76: 1, 78: 1, 80: 1, 83: 1,
-              117: 1}
-plt.figure(figsize=(20, 20))
 
-p1 = plt.bar(false_pairs.keys(), false_pairs.values())
-p2 = plt.bar(true_pairs.keys(), true_pairs.values())
+def plot_pair_distance():
+    false_pairs = {2: 2311, 4: 1397, 6: 1124, 5: 967, 7: 928, 8: 922, 3: 911, 10: 796, 9: 771, 12: 720, 11: 693,
+                   14: 623, 13: 575,
+                   15: 490, 16: 487, 17: 476, 18: 463, 20: 400, 19: 398, 21: 346, 22: 333, 24: 290, 23: 281, 26: 250,
+                   25: 235,
+                   28: 219, 30: 192, 27: 190, 32: 184, 29: 163, 34: 144, 31: 132, 37: 112, 35: 111, 36: 111, 33: 111,
+                   38: 104,
+                   42: 100, 1: 95, 39: 95, 44: 95, 46: 93, 40: 92, 41: 86, 48: 77, 43: 65, 49: 65, 45: 64, 0: 63,
+                   52: 59, 50: 57,
+                   60: 55, 54: 54, 56: 52, 53: 51, 51: 51, 58: 50, 70: 43, 63: 42, 47: 41, 55: 41, 62: 39, 66: 37,
+                   72: 37, 64: 37,
+                   67: 34, 74: 34, 65: 34, 57: 33, 59: 33, 76: 32, 68: 31, 61: 30, 69: 26, 78: 23, 81: 22, 79: 21,
+                   80: 21, 71: 20,
+                   73: 18, 77: 18, 85: 18, 82: 18, 84: 18, 83: 17, 86: 17, 75: 16, 87: 16, 88: 14, 90: 14, 93: 14,
+                   89: 14, 91: 12,
+                   95: 11, 97: 11, 99: 10, 92: 10, 96: 9, 104: 9, 101: 8, 94: 8, 98: 8, 106: 8, 107: 7, 118: 7, 102: 7,
+                   100: 7,
+                   103: 7, 110: 6, 116: 6, 109: 6, 111: 6, 113: 6, 120: 6, 105: 6, 108: 6, 112: 5, 114: 5, 130: 5,
+                   125: 5, 123: 4,
+                   128: 4, 115: 4, 122: 4, 135: 3, 121: 2, 133: 2, 127: 2, 132: 2, 117: 2, 124: 2, 119: 1, 138: 1,
+                   139: 1, 145: 1,
+                   136: 1, 142: 1, 134: 1, 140: 1, 131: 1, 137: 1, 129: 1, 126: 1}
+    true_pairs = {2: 321, 7: 232, 6: 199, 8: 193, 5: 182, 11: 180, 9: 175, 4: 160, 3: 157, 10: 156, 12: 150, 14: 125,
+                  13: 114,
+                  15: 94, 16: 93, 18: 84, 17: 72, 19: 71, 20: 62, 23: 55, 21: 52, 22: 49, 24: 41, 27: 40, 25: 37,
+                  26: 32, 29: 28,
+                  30: 26, 28: 25, 35: 22, 33: 20, 32: 19, 31: 18, 34: 13, 38: 13, 37: 12, 36: 11, 40: 10, 42: 10,
+                  39: 10, 41: 9,
+                  45: 8, 0: 7, 49: 7, 44: 7, 48: 7, 47: 6, 43: 6, 46: 5, 51: 5, 54: 4, 58: 4, 65: 3, 75: 3, 52: 3,
+                  87: 3, 89: 3,
+                  93: 3, 97: 3, 111: 3, 53: 2, 57: 2, 60: 2, 62: 2, 72: 2, 61: 2, 82: 2, 85: 2, 91: 2, 100: 2, 102: 2,
+                  109: 2,
+                  113: 2, 56: 2, 67: 2, 70: 2, 95: 2, 50: 2, 64: 1, 66: 1, 71: 1, 73: 1, 81: 1, 105: 1, 107: 1, 119: 1,
+                  122: 1,
+                  124: 1, 126: 1, 128: 1, 131: 1, 133: 1, 135: 1, 140: 1, 142: 1, 145: 1, 147: 1, 150: 1, 151: 1,
+                  157: 1, 69: 1,
+                  55: 1, 59: 1, 63: 1, 77: 1, 84: 1, 99: 1, 101: 1, 103: 1, 108: 1, 68: 1, 74: 1, 76: 1, 78: 1, 80: 1,
+                  83: 1,
+                  117: 1}
+    plt.figure(figsize=(20, 20))
 
-plt.ylabel('Count')
-plt.xlabel('Entity distance')
-plt.title('Counts for entity distance')
-plt.legend((p1[0], p2[0]), ('False pairs', 'True pairs'))
+    p1 = plt.bar(false_pairs.keys(), false_pairs.values())
+    p2 = plt.bar(true_pairs.keys(), true_pairs.values())
 
-plt.show()
+    plt.ylabel('Count')
+    plt.xlabel('Entity distance')
+    plt.title('Counts for entity distance')
+    plt.legend((p1[0], p2[0]), ('False pairs', 'True pairs'))
+
+    plt.show()
+
+
+def plot_ancestor_count(dict):
+    ancestor_count_dict = dict
+    fig, axs = plt.subplots(nrows=2, ncols=2)
+
+    ancestor_count_dict.pop('null', None)
+    words = []
+    for ax, (key, values) in zip(axs.reshape(-1), ancestor_count_dict.items()):
+        ax.bar(list(values.keys())[:15], list(values.values())[:15])
+        ax.set_title(key)
+        ax.set_xticklabels(list(values.keys())[:15], fontsize=8, rotation=45)
+        words.append(list(values.keys())[:15])
+    print("Intersection:", set.intersection(*map(set, words)))
+
+    plt.suptitle('Ancestor counts')
+
+    plt.show()
+
+
+if __name__ == '__main__':
+    plot_pair_distance()
+    plot_ancestor_count({'effect': {'increase': 133, 'report': 80, 'include': 66, 'decrease': 63, 'reduce': 61,
+                                    'result': 49, 'use': 28, 'receive': 24, 'have': 24, 'associate': 23, 'enhance': 22,
+                                    'inhibit': 20, 'Depressants': 20, 'be': 18, 'take': 18, 'produce': 16,
+                                    'interaction': 16, 'experience': 15, 'cause': 14, 'show': 14, 'antagonize': 13,
+                                    'appear': 11, 'give': 11, 'induce': 11, 'note': 11, 'exhibit': 10, 'augment': 9,
+                                    'exacerbate': 9, 'regulate': 8, 'occur': 8, 'contain': 7, 'treat': 7, 'interact': 7,
+                                    'interfere': 7, 'block': 6, 'blunt': 6, 'prolong': 6, 'potentiate': 6, 'begin': 6,
+                                    'reveal': 6, 'higher': 5, 'remove': 5, 'Warfarin': 5, 'lead': 5, 'add': 4,
+                                    'worsen': 4, 'derivative': 4, 'study': 4, 'inhibitor': 4, 'additive': 4,
+                                    'opioid': 4, 'lengthen': 4, 'intensify': 4, 'counteract': 4, 'consider': 4,
+                                    'mix': 4, 'combine': 3, 'convert': 3, 'agent': 3, 'alter': 3, 'make': 3,
+                                    'exaggerate': 3, 'monitor': 3, 'minimize': 3, 'demonstrate': 3, 'render': 3,
+                                    'antacid': 3, 'suppress': 3, 'unpredictable': 3, 'provide': 2, 'administer': 2,
+                                    'active': 2, 'conclude': 2, 'find': 2, 'supersensitive': 2, 'indifferent': 2,
+                                    'concentration': 2, 'attenuate': 2, 'indicate': 2, 'since': 2, 'develop': 2,
+                                    'prevent': 2, 'retard': 2, 'administration': 2, 'see': 2, 'advise': 2,
+                                    'accentuate': 2, 'oxytocin': 2, 'Ergotamine': 2, 'discontinue': 2, 'yield': 2,
+                                    'antidepressant': 2, 'benefit': 2, 'strong': 1, 'suppression': 1, 'tolerate': 1,
+                                    'elicit': 1, 'Rhabdomyolysis': 1, 'fail': 1, 'apply': 1, 'stimulate': 1,
+                                    'protect': 1, 'hepatotoxicity': 1, 'prescribe': 1, 'cisplatin': 1, 'agonist': 1,
+                                    'modulate': 1, 'change': 1, 'Methotrexate': 1, 'observe': 1, 'contribute': 1,
+                                    'pose': 1, 'test': 1, 'corticosteroid': 1, 'propranolol': 1, 'reliable': 1,
+                                    'Clonidine': 1, 'slow': 1, 'aware': 1, 'faster': 1, 'requirement': 1, 'know': 1,
+                                    'feel': 1, 'variable': 1, 'diminish': 1, 'follow': 1, 'require': 1,
+                                    'Propoxyphene': 1, 'recommend': 1, 'factor': 1, 'provoke': 1, '369': 1, 'react': 1,
+                                    'reverse': 1, 'maintain': 1, 'unaffected': 1, 'Olanzapine': 1, 'exercise': 1,
+                                    'less': 1, 'recognize': 1, 'affect': 1, 'need': 1, 'depress': 1, 'kill': 1,
+                                    'prove': 1, 'necessary': 1, 'effective': 1, 'expect': 1, 'withhold': 1,
+                                    'believe': 1, 'preparation': 1, 'drug': 1, 'n': 1, 'reversible': 1, 'unknown': 1,
+                                    'greater': 1, 'tend': 1, 'compromise': 1, 'implicate': 1, 'separate': 1,
+                                    'suggest': 1, 'Imipramine': 1, 'Thioridazine': 1},
+                         'null': {'have': 222, 'increase': 198, 'decrease': 191, 'result': 186, 'administer': 132,
+                                  'interact': 131, 'reduce': 112, 'show': 69, 'report': 57, 'use': 56,
+                                  'demonstrate': 51, 'study': 42, 'affect': 40, 'cause': 36, 'give': 36, 'Warfarin': 36,
+                                  'antacid': 35, 'monitor': 34, 'produce': 33, 'observe': 31, 'coadminister': 31,
+                                  'inhibit': 29, 'potentiate': 28, 'suggest': 26, 'inhibitor': 26, 'lead': 26,
+                                  'Probenecid': 25, 'take': 24, 'be': 21, 'higher': 20, 'associate': 20,
+                                  'ketoconazole': 20, 'recommend': 20, 'agent': 20, 'need': 20, 'exercise': 20,
+                                  'effect': 19, 'Digoxin': 19, 'interaction': 19, 'occur': 18, 'note': 18,
+                                  'contraceptive': 17, 'interfere': 16, 'co-administer': 15, 'Furosemide': 15,
+                                  'see': 15, 'consider': 14, 'know': 14, 'insulin': 14, 'Methotrexate': 12,
+                                  'corticosteroid': 12, 'prolong': 12, 'delay': 12, 'Antibiotics': 12, 'antagonist': 11,
+                                  'begin': 11, 'alcohol': 11, 'necessary': 11, 'lithium': 11, 'enhance': 11,
+                                  'avoid': 11, 'aspirin': 11, 'Aspirin/Acetaminophen': 10, 'Anticoagulants': 10,
+                                  'alter': 9, 'evaluate': 9, 'Cimetidine': 9, 'antihypertensive': 9, 'Theophylline': 9,
+                                  'Products': 9, 'indicate': 8, 'pose': 8, 'Phenytoin': 8, 'conduct': 8, 'mean': 8,
+                                  'drug': 8, 'determine': 7, 'Quinidine': 7, 'Carbamazepine': 7, 'expect': 7,
+                                  'appear': 7, 'receive': 7, 'pronounced': 7, 'mix': 7, 'absorption': 7,
+                                  'investigate': 6, 'work': 6, 'Ampicillin/Amoxicillin': 6, 'Alprazolam': 6,
+                                  'control': 6, 'advise': 6, 'cautious': 6, 'Valproate': 6, 'rule': 6, 'Amiodarone': 6,
+                                  'Amphotericin': 6, 'administration': 5, 'antagonize': 5, 'Agents': 5,
+                                  'Tolbutamide': 5, 'Rifampin': 5, 'blunt': 5, 'binding': 5, 'acetaminophen': 5,
+                                  'likely': 5, 'Metoclopramide': 5, 'Morphine': 5, 'Digitalis': 5, 'premedicate': 5,
+                                  'unchanged': 4, 'remove': 4, 'interest': 4, 'relaxant': 4, 'Glyburide': 4,
+                                  'eliminate': 4, 'Allopurinol': 4, 'Amitriptyline': 4, 'induce': 4, 'limit': 4,
+                                  'bind': 4, 'a': 4, 'recommended.levetiracetam': 4, 'beadminister': 4,
+                                  'Prednisone/prednisolone': 4, 'compare': 3, 'however': 3, 'prove': 3, 'due': 3,
+                                  'modify': 3, 'Glibenclamide': 3, 'refer': 3, 'unlikely': 3, 'Midazolam': 3,
+                                  'Albuterol': 3, 'similar': 3, 'fail': 3, 'prevent': 3, 'discontinue': 3, 'perform': 3,
+                                  'cyclosporine': 3, 'Metformin': 3, 'antibiotic': 3, 'requirement': 3, 'alert': 3,
+                                  'hydrochlorothiazide': 3, 'naproxen': 3, 'employ': 3, 'compete': 3, 'different': 3,
+                                  'diuretic': 3, 'metabolize': 3, 'gradual': 3, 'exceed': 3, 'chewable/buffered': 3,
+                                  'propranolol': 3, 'VIOXX': 3, 'Nifedipine': 3, 'ethanol': 3, 'pathway': 3,
+                                  'neutralize': 2, 'prior': 2, 'assess': 2, 'find': 2, 'explain': 2, 'reverse': 2,
+                                  'dexamethasone': 2, 'Praziquantel': 2, 'cyclosporin': 2, 'reserve': 2, 'review': 2,
+                                  'Diltiazem': 2, 'Paroxetine': 2, 'allow': 2, 'diminish': 2, 'attenuate': 2,
+                                  'Simvastatin': 2, 'volunteer': 2, 'altered': 2, 'pharmacokinetic': 2,
+                                  'Phenytoin/Phenobarbital': 2, 'Diuretics': 2, 'Tablet': 2, 'injection': 2,
+                                  'Antidiabetics': 2, 'estrogen': 2, 'blocker': 2, 'Chlorpromazine': 2, 'carbonate': 2,
+                                  'therapy': 2, 'Ganciclovir': 2, 'Sumatriptan': 2, 'apomorphine': 2, 'Triazolam': 2,
+                                  'develop': 2, 'obtain': 2, 'include': 2, 'augment': 2, 'postmarket': 2, 'elevate': 2,
+                                  'stabilize': 2, 'require': 2, 'emerge': 2, 'derive': 2, 'lower': 2, 'extent': 2,
+                                  'level': 2, 'tetracycline': 2, 'nsaid': 2, 'treatment': 2, 'Ketamine': 2,
+                                  'Vasopressors': 2, 'danazol': 2, 'sterilize': 2, 'maintain': 2, 'abase': 2,
+                                  'isolate': 2, 'inducer': 2, 'pyrantel': 2, 'continue': 2, 'anticonvulsant': 2,
+                                  'experience': 2, 'Zidovudine': 2, 'coadministration': 2, 'ineffective': 1, 'thus': 1,
+                                  'exhibit': 1, 'tolerate': 1, 'examine': 1, 'respect': 1, 'concentrate': 1, 'half': 1,
+                                  'change': 1, 'detect': 1, 'reaction': 1, 'Verapamil': 1, 'Caverject': 1, 'exist': 1,
+                                  'Cardiovasculars': 1, 'adjust': 1, 'glycoside': 1, 'Flucytosine': 1, 'Methadone': 1,
+                                  'reflect': 1, 'alkalinizer': 1, 'dose': 1, 'magnesium': 1, 'Leucovorin': 1,
+                                  'following': 1, 'metabolizer': 1, 'Blockers': 1, 'Fluconazole': 1, 'Ampicillin': 1,
+                                  'Anticholinergics': 1, 'antidepressant': 1, 'antifungal': 1, 'anticipate': 1,
+                                  'Cholestyramine': 1, 'ephedrine': 1, 'antihistamine': 1, 'block': 1, 'Haloperidol': 1,
+                                  'Meperidine': 1, 'norepinephrine': 1, 'alkaloid': 1, 'hypoglycemic': 1, 'impair': 1,
+                                  'Vasoconstrictors': 1, 'ssri': 1, 'anticholinergic': 1, 'Adenosine': 1, 'mask': 1,
+                                  'potential': 1, 'Bismuth': 1, 'act': 1, 'Phenylbutazone': 1, 'restricted': 1,
+                                  'wshow': 1, 'heparin': 1, 'persist': 1, 'slow': 1, 'differ': 1, 'Nitroglycerin': 1,
+                                  'identify': 1, 'nondepolarize': 1, 'counteract': 1, 'nitrate': 1, 'Acetate': 1,
+                                  'protect': 1, 'anticoagulant': 1, 'Glycosides': 1, 'caffeine': 1, 'Beta-Blockers': 1,
+                                  'Nitrates': 1, 'mediate': 1, 'denote': 1, 'severe': 1, 'doxorubicin': 1,
+                                  'Promethazine': 1},
+                         'mechanism': {'following': 80, 'inhibit': 65, 'result': 60, 'interfere': 32, 'increase': 31,
+                                       'report': 27, 'show': 26, 'include': 26, 'administer': 23, 'have': 21,
+                                       'produce': 19, 'know': 17, 'decrease': 16, 'Products': 16, 'cause': 15,
+                                       'lead': 11, 'demonstrate': 10, 'bind': 10, 'reduce': 9, 'enhance': 9, 'raise': 9,
+                                       'take': 8, 'coadminister': 8, 'observe': 8, 'lower': 7, 'displace': 7,
+                                       'modify': 6, 'potentiate': 6, 'receive': 6, 'example': 6, 'agent': 5,
+                                       'affect': 5, 'impair': 5, 'likely': 5, 'alter': 5, 'form': 5, 'accelerate': 4,
+                                       'prolong': 4, 'administration': 4, 'conduct': 4, 'Anticonvulsants': 4, 'give': 3,
+                                       'ketoconazole': 3, 'Phenobarbital': 3, 'be': 3, 'induce': 3, 'acid': 3,
+                                       'greater': 3, 'inhibitor': 3, 'delay': 3, 'occur': 3, '%': 3, 'higher': 3,
+                                       'metabolize': 3, 'depress': 2, 'mediate': 2, 'interaction': 2, 'diminish': 2,
+                                       'reach': 2, 'explain': 2, 'elevate': 2, 'co-administer': 2, 'corticosteroid': 2,
+                                       '6': 2, 'study': 2, 'Phenytoin': 2, 'naproxen': 2, 'appear': 2, 'interact': 2,
+                                       'longer': 1, 'discussion': 1, 'effective': 1, 'propose': 1, 'clearance': 1,
+                                       'ethanolysis': 1, 'describe': 1, 'consume': 1, 'ethanol': 1, 'associate': 1,
+                                       'antagonist': 1, 'influence': 1, '3': 1, 'due': 1, 'eliminate': 1, 'exist': 1,
+                                       'double': 1, 'inhibition': 1, 'Metformin': 1, 'arise': 1, 'pose': 1,
+                                       'Amitriptyline': 1, 'become': 1, 'Digoxin': 1, 'antagonize': 1, 'Ganciclovir': 1,
+                                       'hydrochlorothiazide': 1, 'acetaminophen': 1, 'cyclosporine': 1, 'drug': 1,
+                                       'aspirin': 1, 'sulindac': 1, 'necessary': 1, 'ng/ml': 1, 'potential': 1,
+                                       'caffeine': 1, 'Theophylline': 1, 'evaluate': 1, 'postmarket': 1, 'find': 1,
+                                       'act': 1, 'stabilize': 1, 'add': 1, 'fall': 1, 'expect': 1, 'resin': 1,
+                                       'Cimetidine': 1, 'average': 1, 'Methotrexate': 1, 'see': 1, 'separate': 1,
+                                       'Quinidine': 1, 'antacid': 1, 'adsorption': 1, 'small': 1, 'use': 1,
+                                       'Probenecid': 1, 'treat': 1, 'effect': 1, 'block': 1, 'Promethazine': 1,
+                                       'coadministration': 1},
+                         'advise': {'administer': 39, 'approach': 33, 'recommend': 30, 'use': 27, 'contraindicate': 26,
+                                    'consider': 26, 'take': 25, 'avoid': 25, 'require': 18, 'monitor': 16,
+                                    'coadminister': 15, 'receive': 15, 'tell': 12, 'reduce': 11, 'warrant': 10,
+                                    'increase': 10, 'give': 10, 'initiate': 10, 'co-administer': 9, 'evaluate': 7,
+                                    'be': 6, 'advise': 6, 'necessary': 6, 'need': 6, 'exercise': 6, 'indicate': 5,
+                                    'treat': 3, 'Nafazodone': 3, 'potentiate': 3, 'discontinue': 3, 'combine': 3,
+                                    'agent': 3, 'elapse': 3, 'exceed': 3, 'change': 2, 'a': 2, 'suggest': 2, 'occur': 2,
+                                    'warn': 2, 'determine': 2, 'check': 2, 'establish': 2, 'titrate': 2, 'stop': 2,
+                                    'dose': 2, 'direct': 1, 'review': 1, 'weigh': 1, 'result': 1, 'add': 1, 'seem': 1,
+                                    'keep': 1, 'start': 1, '-': 1, 'alter': 1, 'provide': 1, 'different': 1, 'limit': 1,
+                                    'associate': 1, 'administration': 1, 'adjust': 1, 'alcohol': 1, 'show': 1,
+                                    'report': 1, 'diazepam': 1, 'derive': 1, 'separate': 1, 'refer': 1, 'important': 1,
+                                    'reduction': 1, 'do': 1, 'stabilize': 1, 'aspirin': 1, 'observe': 1, 'maintain': 1,
+                                    'continue': 1, 'interrupt': 1},
+                         'int': {'report': 25, 'interaction': 9, 'suggest': 7, 'occur': 4, 'pose': 3, 'interfere': 3,
+                                 'observe': 2, 'Rifampin': 1, 'know': 1, 'increase': 1, 'extent': 1, 'affect': 1,
+                                 'likely': 1, 'associate': 1, 'describe': 1, 'demonstrate': 1, 'exist': 1,
+                                 'interact': 1, 'complex': 1, 'recommend': 1, 'incompatible': 1}})

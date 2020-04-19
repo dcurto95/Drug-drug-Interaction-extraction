@@ -215,7 +215,7 @@ def check_dependency(analysis, tokens_info, e2_start_off, first_index, second_in
         good_dic[second_index - first_index] = good_dic.get(second_index - first_index, 0) + 1
 
     for token_info in tokens_info:
-        for index in range(len(analysis.nodes)):
+        for index in range(1, len(analysis.nodes)):
             if index < first_index:
                 # Search before
                 # category = basic_rules(analysis.nodes[index]['word'])
@@ -257,30 +257,66 @@ def find_second_entity(analysis, word_index, e2_start_off):
     raise Exception("Entity not found")
 
 
+def find_common_verb_ancestor(analysis, first_index, second_index):
+    visited_first = [first_index]
+    visited_second = [second_index]
+
+    while not (analysis.root['address'] in visited_first and analysis.root['address'] in visited_second):
+        head = analysis.nodes[first_index]['head']
+        if head is not None:
+            visited_first.append(head)
+            first_index = head
+        head = analysis.nodes[second_index]['head']
+        if head is not None:
+            visited_second.append(head)
+            second_index = head
+        intersection = list(set(visited_first) & set(visited_second))
+        if intersection and analysis.nodes[intersection[0]]['tag'][0] == 'V':
+                return intersection[0]
+
+    return analysis.root['address']
+
+
+def check_common_ancestor(ancestor_token):
+    # if ancestor_token['lemma'] in ['report', 'interaction', 'suggest']:
+    #     return 1, 'int'
+    if ancestor_token['lemma'] in ['approach', 'recommend', 'contraindicate']:
+        return 1, 'advise'
+    return 0, 'null'
+
+
 def check_interaction(analysis, entities, id_e1, id_e2, sentence, truth_ddi, dic, good_dic):
     (is_ddi, ddi_type) = rules_without_dependency(sentence)
     if is_ddi:
         return is_ddi, ddi_type
+    if analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest']:
+        return 1, 'advise'
+    if analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce']:
+        return 1, 'effect'
     # TODO: NO BORRAR UTIL PER DEPENDENCY TREE
-    # e1_off = entities[id_e1]
-    # e2_off = entities[id_e2]
-    #
-    # for word_index in range(len(analysis.nodes)):
-    #     token_info = analysis.nodes[word_index]
-    #     entity_list_tokens = []
-    #
-    #     for (e1_start_off, e1_end_off), (e2_start_off, e2_end_off) in zip(e1_off, e2_off):
-    #         if 'start_off' in token_info and (token_info['start_off'] == e1_start_off or (
-    #                 token_info['start_off'] < e1_start_off <= token_info['end_off'])):
-    #             # Start offset matches or start offset is inside token
-    #             entity_list_tokens.append(token_info)
-    #             aux_word_index = word_index
-    #             # If entity is longer than token add to token list
-    #             while token_info['end_off'] < e1_end_off:
-    #                 aux_word_index += 1
-    #                 token_info = analysis.nodes[aux_word_index]
-    #                 entity_list_tokens.append(token_info)
-    #             second_index = find_second_entity(analysis, word_index, e2_start_off)
+    e1_off = entities[id_e1]
+    e2_off = entities[id_e2]
+
+    for word_index in range(1, len(analysis.nodes)):
+        token_info = analysis.nodes[word_index]
+        entity_list_tokens = []
+
+        for (e1_start_off, e1_end_off), (e2_start_off, e2_end_off) in zip(e1_off, e2_off):
+            if 'start_off' in token_info and (token_info['start_off'] == e1_start_off or (
+                    token_info['start_off'] < e1_start_off <= token_info['end_off'])):
+                # Start offset matches or start offset is inside token
+                entity_list_tokens.append(token_info)
+                aux_word_index = word_index
+
+                # If entity is longer than token add to token list
+                while token_info['end_off'] < e1_end_off:
+                    aux_word_index += 1
+                    token_info = analysis.nodes[aux_word_index]
+                    entity_list_tokens.append(token_info)
+
+                second_index = find_second_entity(analysis, word_index, e2_start_off)
+                common_ancestor_index = find_common_verb_ancestor(analysis, word_index, second_index)
+                return check_common_ancestor(analysis.nodes[common_ancestor_index])
     #             return check_dependency(analysis, entity_list_tokens, e2_start_off, word_index, second_index, truth_ddi,
     #                                     dic, good_dic)
 
@@ -324,11 +360,12 @@ if __name__ == '__main__':
     sentences = []
     distance = []
     count_words_between = []
+
     # Process each file in the directory
-    for filename in os.listdir(input_directory):
+    for index_file, filename in enumerate(os.listdir(input_directory)):
         # Parse XML file
         root = parse_xml(input_directory + filename)
-        print(" - File:", filename)
+        print(" - File:", filename, "(", index_file + 1, "out of ", len(os.listdir(input_directory)), ")")
 
         for child in root:
             sid, text = get_sentence_info(child)
