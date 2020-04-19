@@ -139,14 +139,14 @@ if __name__ == '__main__':
             output[value[0]] = []
         tokens_e1, tokens_e2 = check_interaction(all_parse[value[0]], all_entities[value[0]], value[1], value[2])
 
-        aux = ("Sentence: " + sentences[value[0]],
+        aux = (("Sentence: " + sentences[value[0]],
                "Entity attributes: " + str(all_entities[value[0]][value[1]].attrib),
                "Dependency attributes: " + str(tokens_e1),
                "ROOT: " + all_roots[value[0]],
                "Entity_2 attributes: " + str(all_entities[value[0]][value[2]].attrib),
-               "Dependency_2 attributes: " + str(tokens_e2))
+               "Dependency_2 attributes: " + str(tokens_e2)), value[-1])
 
-        output[value[0]].append((aux, value[-1]))
+        output[value[0]].append(aux)
 
         if new_sent != value[0] and new_sent != "":
             if new_sent in truth:
@@ -157,9 +157,9 @@ if __name__ == '__main__':
         if new_sent == "":
             new_sent = value[0]
         if value[0] in truth and aux in truth[value[0]]:
-            matched_entities.append((aux, value[-1]))
+            matched_entities.append(aux)
         else:
-            wrong_entities.append((aux, value[-1]))
+            wrong_entities.append(aux)
 
     missing_dict = {}
     for ent, type in missing:
