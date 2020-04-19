@@ -52,20 +52,23 @@ def evaluate(inputdir, outputfile):
     return os.system("java -jar ../eval/evaluateDDI.jar " + inputdir + " ../output/" + outputfile)
 
 
-def add_offset_to_tree(parse):
-    word_count = 0
+def add_offset_to_tree(parse, text, offset=0):
     for key in range(len(parse.nodes)):
         value = parse.nodes[key]
 
         if value['word'] and value['rel'] != 'punct':
-            parse.nodes[key]['start_off'] = word_count
-            parse.nodes[key]['end_off'] = len(value['word']) - 1 + word_count
-            word_count += len(value['word']) + 1
+            start = text.find(value['word'], offset)
+            parse.nodes[key]['start_off'] = start
+            if len(value['word']) > 1:
+                parse.nodes[key]['end_off'] = len(value['word']) - 1 + start
+            else:
+                parse.nodes[key]['end_off'] = len(value['word']) + start
+            offset = start + len(value['word'])
 
         elif value['rel'] == 'punct':
-            parse.nodes[key]['start_off'] = word_count
-            parse.nodes[key]['end_off'] = word_count + 1
-            word_count += 1
+            parse.nodes[key]['start_off'] = offset
+            parse.nodes[key]['end_off'] = offset + 1
+            offset += 1
 
     return parse
 
@@ -73,60 +76,109 @@ def add_offset_to_tree(parse):
 def analyze(stext):
     parser = CoreNLPDependencyParser(url="http://localhost:9000")
 
+    if '\r\n' in stext:
+        stext = stext.replace('\r\n', '  ')
     iterator = parser.raw_parse(stext)
     parse = next(iterator)
 
-    parse = add_offset_to_tree(parse)
+    parse = add_offset_to_tree(parse, stext)
+
     return parse
 
 
-def check_dependency(analysis, tokens_info, e2_start_off):
-    # Deps_types: effect, int, mechanis, advice and null
+def basic_rules(word, lemma):
+    advise_list = ['can', 'could', 'may', 'might', 'will', 'shall', 'should', 'ought', 'must', 'would']
+    advise_string = ' '.join(advise_list)
+    effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
+    effect_string = ' '.join(effect_list)
+    mechanism_list = ['reduce', 'increase', 'decrease']
+    mechanism_string = ' '.join(mechanism_list)
+    int_list = ['interact', 'interaction', 'interfere']
+    int_string = ' '.join(int_list)
+
+    if word in int_list:
+        return 'int'
+    if word in advise_list:
+        return 'advise'
+    if word in effect_list:
+        return 'effect'
+    if word in mechanism_list:
+        return 'mechanism'
+    return None
+
+
+def check_dependency(analysis, tokens_info, e2_start_off, first_index, second_index, truth_ddi, dic, good_dic):
+    # Deps_types: effect, int, mechanis, advise and null
+    if truth_ddi == 'false':
+        dic[second_index - first_index] = dic.get(second_index - first_index, 0) + 1
+    else:
+        good_dic[second_index - first_index] = good_dic.get(second_index - first_index, 0) + 1
 
     for token_info in tokens_info:
+        for index in range(len(analysis.nodes)):
+            if index < first_index:
+                # Search before
+                # category = basic_rules(analysis.nodes[index]['word'])
+                # if category is not None:
+                #     return 1, category
+                pass
+
+            if first_index <= index <= second_index:
+                # Search between words
+                category = basic_rules(analysis.nodes[index]['word'].lower(), analysis.nodes[index]['lemma'])
+                if category is not None:
+                    return 1, category
+            if index > second_index:
+                # Search after words
+                # category = basic_rules(analysis.nodes[index]['word'])
+                # if category is not None:
+                #     return 1, category
+                pass
+
         if 'start_off' in analysis.nodes[token_info['head']] and \
                 analysis.nodes[token_info['head']]['start_off'] == e2_start_off:
-            return 1, 'head'
+            return 0, 'null'
         for dep_rel, value in token_info['deps'].items():
             for dependency in value:
                 if 'start_off' in analysis.nodes[dependency] and \
                         analysis.nodes[dependency]['start_off'] == e2_start_off:
-                    return 1, 'deps'
+                    return 0, 'null'
     return 0, 'null'
 
 
-def check_interaction(analysis, entities, id_e1, id_e2):
+def find_second_entity(analysis, word_index, e2_start_off):
+    index = word_index
+
+    while index < len(analysis.nodes):
+        if 'start_off' in analysis.nodes[index] and (analysis.nodes[index]['start_off'] == e2_start_off or (
+                analysis.nodes[index]['start_off'] < e2_start_off <= analysis.nodes[index]['end_off'])):
+            return index
+        index += 1
+    raise Exception("Entity not found")
+
+
+def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, dic, good_dic):
     e1_off = entities[id_e1]
     e2_off = entities[id_e2]
 
-    is_ddi = 0
-    ddi_type = 'null'
-
     for word_index in range(len(analysis.nodes)):
         token_info = analysis.nodes[word_index]
-        tokens_info = []
+        entity_list_tokens = []
 
         for (e1_start_off, e1_end_off), (e2_start_off, e2_end_off) in zip(e1_off, e2_off):
-            if 'start_off' in token_info and token_info['start_off'] == e1_start_off:
-                tokens_info.append(token_info)
+            if 'start_off' in token_info and (token_info['start_off'] == e1_start_off or (
+                    token_info['start_off'] < e1_start_off <= token_info['end_off'])):
+                # Start offset matches or start offset is inside token
+                entity_list_tokens.append(token_info)
+                aux_word_index = word_index
+                # If entity is longer than token add to token list
                 while token_info['end_off'] < e1_end_off:
-                    word_index += 1
-                    token_info = analysis.nodes[word_index]
-                    tokens_info.append(token_info)
-
-                is_ddi, ddi_type = check_dependency(analysis, tokens_info, e2_start_off)
-
-            elif 'start_off' in token_info and token_info['start_off'] == e2_start_off:
-                tokens_info.append(token_info)
-                while token_info['end_off'] < e2_end_off:
-                    word_index += 1
-                    token_info = analysis.nodes[word_index]
-                    tokens_info.append(token_info)
-
-                is_ddi, ddi_type = check_dependency(analysis, tokens_info, e1_start_off)
-
-        if is_ddi:
-            return is_ddi, ddi_type
+                    aux_word_index += 1
+                    token_info = analysis.nodes[aux_word_index]
+                    entity_list_tokens.append(token_info)
+                second_index = find_second_entity(analysis, word_index, e2_start_off)
+                return check_dependency(analysis, entity_list_tokens, e2_start_off, word_index, second_index, truth_ddi,
+                                        dic, good_dic)
 
     return 0, 'null'
 
@@ -137,8 +189,8 @@ if __name__ == '__main__':
 
     output_file = open('../output/' + output_file_name, 'w+')
 
-    my_parser = CoreNLPDependencyParser(url="http://localhost:9000")
-    my_tree, = my_parser.raw_parse("Hello, my name is David")
+    dic = {}
+    good_dic = {}
 
     # Process each file in the directory
     for filename in os.listdir(input_directory):
@@ -171,12 +223,15 @@ if __name__ == '__main__':
                 id_e2 = pair.get('e2')
 
                 # TODO: Add rules in Check interaction
-                (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2)
+                (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2, pair.get('ddi'), dic, good_dic)
 
                 print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
 
             # output_entities(sid, entities, output_file)
-
+    dic = {k: v for k, v in sorted(dic.items(), key=lambda item: item[1], reverse=True)}
+    print("DICT:", dic)
+    good_dic = {k: v for k, v in sorted(good_dic.items(), key=lambda item: item[1], reverse=True)}
+    print("Good DICT:", good_dic)
     # Close the file
     output_file.close()
     print(evaluate(input_directory, output_file_name))

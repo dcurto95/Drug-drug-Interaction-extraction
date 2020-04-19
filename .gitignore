@@ -6,3 +6,4 @@ resources/*
 output/*
 .idea/*
 LabProjectAHLT.pdf
+src/missing_pairs.txt
