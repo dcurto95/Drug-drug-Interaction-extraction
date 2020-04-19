@@ -2,7 +2,9 @@ import os
 import re
 import string
 import xml.etree.ElementTree as ET
-import  pandas as pd
+
+import networkx as nx
+import pandas as pd
 import numpy as np
 from chemdataextractor.nlp.tokenize import ChemWordTokenizer
 from nltk import word_tokenize
@@ -54,7 +56,7 @@ def evaluate(inputdir, outputfile):
 
 def get_training_statistic():
     output_file_name = "task9.2_out_1.txt"
-    input_directory = '../data/Train/'
+    input_directory = '../data/Test-DDI/'
 
     output_file = open('../output/' + output_file_name, 'w+')
 
@@ -64,10 +66,11 @@ def get_training_statistic():
     distance = []
     count_words_between = []
     # Process each file in the directory
-    for filename in os.listdir(input_directory):
+    for index_file, filename in enumerate(os.listdir(input_directory)):
         # Parse XML file
+        print(index_file, "out of ", len(os.listdir(input_directory)))
         root = parse_xml(input_directory + filename)
-        print(" - File:", filename)
+        #print(" - File:", filename)
 
         for child in root:
             sid, text = get_sentence_info(child)
@@ -86,16 +89,17 @@ def get_training_statistic():
                     ent_offset.append(tuple([int(i) for i in off.split("-")]))
                 entities[id] = np.asarray(ent_offset)
 
+            analysis = analyze(text)
+
             for pair in child.findall('pair'):
                 id_e1 = pair.get('e1')
                 id_e2 = pair.get('e2')
                 ddi = pair.get('ddi')
                 type = pair.get('type')
 
+
                 if ddi == "true":
                     types.append(type)
-                    print(entities[id_e1])
-                    print(entities[id_e2])
                     offset_1 = entities[id_e1][0]
                     offset_2 = entities[id_e2][0]
                     drug_1 = drug_2 = ""
@@ -116,6 +120,34 @@ def get_training_statistic():
                     sentence = text[start:end]
                     count_words_between.append(len(sentence.split()) - 2)
                     sentences.append(sentence)
+
+                    is_ddi = 0
+                    ddi_type = "null"
+
+                    if "effect" in sentence:
+                        is_ddi = 1
+                        ddi_type = "effect"
+
+                    if "should" in sentence:
+                        is_ddi = 1
+                        ddi_type = "advise"
+
+                    if "increase" in sentence or "decrease" in sentence or "reduce" in sentence:
+                        is_ddi = 1
+                        ddi_type = "mechanism"
+
+                    if "interact" in sentence or "interaction" in sentence:
+                        is_ddi=1
+                        ddi_type = "int"
+
+                    # TODO: Add rules in Check interaction
+                    #(is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2)
+
+                    print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
+
+    # Close the file
+    output_file.close()
+    print(evaluate(input_directory, output_file_name))
 
 
     df = pd.DataFrame(list(zip(types, drugs_interact, sentences, distance, count_words_between)),
@@ -204,7 +236,7 @@ def check_interaction(analysis, entities, id_e1, id_e2):
 
 if __name__ == '__main__':
     output_file_name = "task9.2_out_1.txt"
-    input_directory = '../data/Train/'
+    input_directory = '../data/Devel/'
 
     output_file = open('../output/' + output_file_name, 'w+')
     get_training_statistic()
