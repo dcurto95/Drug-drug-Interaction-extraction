@@ -56,7 +56,7 @@ def evaluate(inputdir, outputfile):
 
 def get_training_statistic():
     output_file_name = "task9.2_out_1.txt"
-    input_directory = '../data/Test-DDI/'
+    input_directory = '../data/Devel/'
 
     output_file = open('../output/' + output_file_name, 'w+')
 
@@ -97,53 +97,56 @@ def get_training_statistic():
                 ddi = pair.get('ddi')
                 type = pair.get('type')
 
+                types.append(type)
+                offset_1 = entities[id_e1][0]
+                offset_2 = entities[id_e2][0]
+                drug_1 = drug_2 = ""
+                end = 0
+                start = offset_1[0]
+                if len(offset_1) > 2:
+                    drug_1 = text[offset_1[0]:offset_1[1]+1] + text[offset_1[2]:offset_1[3]+1]
+                else:
+                    drug_1 = text[offset_1[0]:offset_1[1] + 1]
+                if len(offset_2) > 2:
+                    drug_2 = text[offset_2[0]:offset_2[1]+1] + text[offset_2[2]:offset_2[3]+1]
+                    end = offset_2[3]
+                else:
+                    drug_2 = text[offset_2[0]:offset_2[1] + 1]
+                    end = offset_2[1]
+                drugs_interact.append((drug_1, drug_2))
+                distance.append(end-start)
+                sentence = text[start:end]
+                count_words_between.append(len(sentence.split()) - 2)
+                sentences.append(sentence)
 
-                if ddi == "true":
-                    types.append(type)
-                    offset_1 = entities[id_e1][0]
-                    offset_2 = entities[id_e2][0]
-                    drug_1 = drug_2 = ""
-                    end = 0
-                    start = offset_1[0]
-                    if len(offset_1) > 2:
-                        drug_1 = text[offset_1[0]:offset_1[1]+1] + text[offset_1[2]:offset_1[3]+1]
-                    else:
-                        drug_1 = text[offset_1[0]:offset_1[1] + 1]
-                    if len(offset_2) > 2:
-                        drug_2 = text[offset_2[0]:offset_2[1]+1] + text[offset_2[2]:offset_2[3]+1]
-                        end = offset_2[3]
-                    else:
-                        drug_2 = text[offset_2[0]:offset_2[1] + 1]
-                        end = offset_2[1]
-                    drugs_interact.append((drug_1, drug_2))
-                    distance.append(end-start)
-                    sentence = text[start:end]
-                    count_words_between.append(len(sentence.split()) - 2)
-                    sentences.append(sentence)
+                is_ddi = 0
+                ddi_type = "null"
 
-                    is_ddi = 0
-                    ddi_type = "null"
+                if "effect" in sentence:
+                    is_ddi = 1
+                    ddi_type = "effect"
 
-                    if "effect" in sentence:
-                        is_ddi = 1
-                        ddi_type = "effect"
+                if "should" in sentence:  #or "may" in sentence or "recommend" in sentence:
+                    is_ddi = 1
+                    ddi_type = "advise"
 
-                    if "should" in sentence:
-                        is_ddi = 1
-                        ddi_type = "advise"
+                if "increase" in sentence or "decrease" in sentence or "reduce" in sentence:
+                    is_ddi = 1
+                    ddi_type = "mechanism"
 
-                    if "increase" in sentence or "decrease" in sentence or "reduce" in sentence:
-                        is_ddi = 1
-                        ddi_type = "mechanism"
+                if "interact" in sentence: #or "interaction" in sentence:
+                    is_ddi=1
+                    ddi_type = "int"
 
-                    if "interact" in sentence or "interaction" in sentence:
-                        is_ddi=1
-                        ddi_type = "int"
+                count = len(sentence.split()) - 2
+                # if count < 2 or count > 60:
+                #     is_ddi = 0
+                #     ddi_type = "null"
 
-                    # TODO: Add rules in Check interaction
-                    #(is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2)
+                # TODO: Add rules in Check interaction
+                #(is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2)
 
-                    print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
+                print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
 
     # Close the file
     output_file.close()
