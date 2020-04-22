@@ -19,127 +19,17 @@ def get_sentence_info(child):
     return child.get('id'), child.get('text')
 
 
-def get_sentence_entities_info(child):
-    return child.get('id'), (child.get('charOffset')).split("-")
-
-
-def tokenize(text):
-    tokenized_sent = word_tokenize(text)
-    tokenized_info = []
-    current_index = 0
-
-    for word in tokenized_sent:
-
-        if not re.match("[" + string.punctuation + "]", word):
-            for match in re.finditer(word, text):
-                if match.start() >= current_index:
-                    tokenized_info.append((word, match.start(), match.end() - 1))
-                    current_index = match.end() - 1
-                    break
-    return tokenized_info
-
-
 def evaluate(inputdir, outputfile):
     return os.system("java -jar ../eval/evaluateDDI.jar " + inputdir + " ../output/" + outputfile)
 
 
-def get_training_statistic():
-    output_file_name = "task9.2_out_1.txt"
-    input_directory = '../data/Devel/'
+def create_model(features_file_name):
+    return os.system("ubuntu run ./megam-64.opt -quiet -nc -nobias multiclass ../features/" + features_file_name + " > ../models/model.dat")
 
-    output_file = open('../output/' + output_file_name, 'w+')
 
-    types = []
-    drugs_interact = []
-    sentences = []
-    distance = []
-    count_words_between = []
-    # Process each file in the directory
-    for index_file, filename in enumerate(os.listdir(input_directory)):
-        # Parse XML file
-        print(index_file, "out of ", len(os.listdir(input_directory)))
-        root = parse_xml(input_directory + filename)
-        # print(" - File:", filename)
-
-        for child in root:
-            sid, text = get_sentence_info(child)
-            entities = {}
-            if not text:
-                continue
-            for entity in child.findall('entity'):
-                id = entity.get('id')
-                offset = entity.get('charOffset')
-                if ';' in offset:
-                    offset = offset.split(";")
-                else:
-                    offset = [offset]
-                ent_offset = []
-                for off in offset:
-                    ent_offset.append(tuple([int(i) for i in off.split("-")]))
-                entities[id] = np.asarray(ent_offset)
-
-            analysis = analyze(text)
-
-            for pair in child.findall('pair'):
-                id_e1 = pair.get('e1')
-                id_e2 = pair.get('e2')
-                ddi = pair.get('ddi')
-                type = pair.get('type')
-
-                types.append(type)
-                offset_1 = entities[id_e1][0]
-                offset_2 = entities[id_e2][0]
-                drug_1 = drug_2 = ""
-                end = 0
-                start = offset_1[0]
-                if len(offset_1) > 2:
-                    drug_1 = text[offset_1[0]:offset_1[1] + 1] + text[offset_1[2]:offset_1[3] + 1]
-                else:
-                    drug_1 = text[offset_1[0]:offset_1[1] + 1]
-                if len(offset_2) > 2:
-                    drug_2 = text[offset_2[0]:offset_2[1] + 1] + text[offset_2[2]:offset_2[3] + 1]
-                    end = offset_2[3]
-                else:
-                    drug_2 = text[offset_2[0]:offset_2[1] + 1]
-                    end = offset_2[1]
-                drugs_interact.append((drug_1, drug_2))
-                distance.append(end - start)
-                sentence = text[start:end]
-                count_words_between.append(len(sentence.split()) - 2)
-                sentences.append(sentence)
-
-                is_ddi = 0
-                ddi_type = "null"
-
-                if "effect" in sentence:
-                    is_ddi = 1
-                    ddi_type = "effect"
-
-                if "should" in sentence:
-                    is_ddi = 1
-                    ddi_type = "advise"
-
-                if "increase" in sentence or "decrease" in sentence or "reduce" in sentence:
-                    is_ddi = 1
-                    ddi_type = "mechanism"
-
-                if "interact" in sentence or "interaction" in sentence:
-                    is_ddi = 1
-                    ddi_type = "int"
-
-                # TODO: Add rules in Check interaction
-                # (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2)
-
-                print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
-
-    # Close the file
-    output_file.close()
-    print(evaluate(input_directory, output_file_name))
-
-    df = pd.DataFrame(list(zip(types, drugs_interact, sentences, distance, count_words_between)),
-                      columns=['Type', 'Drug_Interact', 'Sentence', 'Distance', 'CountWordsBetween'])
-
-    df.to_csv('analysis.csv', index=False)
+def predict(features_file_name, test_name, model_file_name="../models/model.dat"):
+    return os.system(
+        "ubuntu run ./megam-64.opt -nc -nobias -predict " + model_file_name + " multiclass ../features/" + features_file_name + " > ../output/" + test_name)
 
 
 def add_offset_to_tree(parse, text, offset=0):
@@ -262,7 +152,7 @@ def find_common_verb_ancestor(analysis, first_index, second_index):
             second_index = head
         intersection = list(set(visited_first) & set(visited_second))
         if intersection and analysis.nodes[intersection[0]]['tag'][0] == 'V':
-                return intersection[0]
+            return intersection[0]
 
     return analysis.root['address']
 
@@ -335,42 +225,32 @@ def extract_inbetween_text(analysis, entities, id_e1, id_e2):
 
 
 def rules_without_dependency(sentence):
-    is_ddi = 0
-    ddi_type = "null"
+    features = []
 
-    effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
+    features.append("Contains_effect=" + str("effect" in sentence))
+    features.append("Contains_should=" + str("should" in sentence))
+    features.append("Contains_mechanism_word=" + str("increase" in sentence or "decrease" in sentence or "reduce" in sentence))
+    features.append("Contains_interact=" + str("interact" in sentence))
 
-    if "effect" in sentence: #any(x in sentence for x in effect_list):
-        is_ddi = 1
-        ddi_type = "effect"
-    if "should" in sentence:
-        is_ddi = 1
-        ddi_type = "advise"
-    if "increase" in sentence or "decrease" in sentence or "reduce" in sentence:
-        is_ddi = 1
-        ddi_type = "mechanism"
-    if "interact" in sentence:
-        is_ddi = 1
-        ddi_type = "int"
-
-    return is_ddi, ddi_type
+    return features
 
 
-if __name__ == '__main__':
-    output_file_name = "task9.2_out_1.txt"
-    input_directory = '../data/Devel/'
+def extract_features(analysis, entities, id_e1, id_e2):
+    features = []
 
-    output_file = open('../output/' + output_file_name, 'w+')
-    # get_training_statistic()
+    inbetween_text = extract_inbetween_text(analysis, entities, id_e1, id_e2)
+    rule_features = rules_without_dependency(inbetween_text)
 
-    dic = {}
-    good_dic = {}
+    features.extend(rule_features)
+    features.append("lemma_advise=" + str(analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest']))
+    features.append("lemma_effect=" + str(analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce']))
 
-    types = []
-    drugs_interact = []
-    sentences = []
-    distance = []
-    count_words_between = []
+    return features
+
+
+def save_features(features_file_name, input_directory, training=False):
+    features_file = open('../features/' + features_file_name + '.txt', 'w+')
+    features_file_without_sent = open('../features/' + features_file_name + '.features', 'w+')
 
     # Process each file in the directory
     for index_file, filename in enumerate(os.listdir(input_directory)):
@@ -400,40 +280,121 @@ if __name__ == '__main__':
             for pair in child.findall('pair'):
                 id_e1 = pair.get('e1')
                 id_e2 = pair.get('e2')
-                # type = pair.get('type')
-                #
-                # types.append(type)
-                # offset_1 = entities[id_e1][0]
-                # offset_2 = entities[id_e2][0]
-                # drug_1 = drug_2 = ""
-                # end = 0
-                # start = offset_1[0]
-                # if len(offset_1) > 2:
-                #     drug_1 = text[offset_1[0]:offset_1[1] + 1] + text[offset_1[2]:offset_1[3] + 1]
-                # else:
-                #     drug_1 = text[offset_1[0]:offset_1[1] + 1]
-                # if len(offset_2) > 2:
-                #     drug_2 = text[offset_2[0]:offset_2[1] + 1] + text[offset_2[2]:offset_2[3] + 1]
-                #     end = offset_2[3]
-                # else:
-                #     drug_2 = text[offset_2[0]:offset_2[1] + 1]
-                #     end = offset_2[1]
-                # drugs_interact.append((drug_1, drug_2))
-                # distance.append(end - start)
-                # sentence = text[start:end]
-                # count_words_between.append(len(sentence.split()) - 2)
-                # sentences.append(sentence)
+                ddi_type = pair.get('type') if pair.get('type') is not None else 'null'
 
-                (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2, pair.get('ddi'), dic,
-                                                       good_dic)
+                features = extract_features(analysis, entities, id_e1, id_e2)
 
-                print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
+                print("\t".join([sid, id_e1, id_e2, ddi_type, "\t".join(features)]), file=features_file)
+                if training:
+                    print("\t".join([ddi_type, "\t".join(features)]), file=features_file_without_sent)
+                else:
+                    print("\t".join(features), file=features_file_without_sent)
+    features_file.close()
 
-            # output_entities(sid, entities, output_file)
-    dic = {k: v for k, v in sorted(dic.items(), key=lambda item: item[1], reverse=True)}
-    print("DICT:", dic)
-    good_dic = {k: v for k, v in sorted(good_dic.items(), key=lambda item: item[1], reverse=True)}
-    print("Good DICT:", good_dic)
-    # Close the file
-    output_file.close()
-    print(evaluate(input_directory, output_file_name))
+
+def parse_features(features_file):
+    lines = features_file.readlines()
+
+    sent_info = []
+    sent_features = []
+    # Strips the newline character
+    for line in lines:
+        value = line.split("\t")
+        sid, id_e1, id_e2, ddi_type, features = value[0], value[1], value[2], value[3], value[4:]
+        sent_info.append((sid, id_e1, id_e2))
+        sent_features.append(features)
+
+    return sent_info, sent_features
+
+
+def create_features():
+    # Save Train features
+    features_file_name = "train_features"
+    input_directory = '../data/Train/'
+    save_features(features_file_name, input_directory, training=True)
+
+    # Save Devel features
+    features_file_name = "devel_features"
+    input_directory = '../data/Devel/'
+    save_features(features_file_name, input_directory)
+
+    # Save Test-DDI features
+    features_file_name = "test_features"
+    input_directory = '../data/Test-DDI/'
+    save_features(features_file_name, input_directory)
+
+
+def parse_prediction(prediction_file):
+    lines = prediction_file.readlines()
+
+    predictions = [line.split('\t')[0] for line in lines]
+
+    return predictions
+
+
+if __name__ == '__main__':
+    # Create_features -> Train -> Predict_Devel or Predict_Test
+    stage = 'Predict_Devel'
+
+    output_file_name = "task9.2_out_2.txt"
+
+    if stage == 'Create_features':
+        create_features()
+
+    elif stage == 'Train':
+        features_file_name = "train_features.features"
+        features_file = open('../features/' + features_file_name, 'r')
+
+        create_model(features_file_name)
+
+    elif stage == 'Predict_Devel':
+        input_directory = '../data/Devel/'
+        output_file_name = "task9.2_devel-out_1.txt"
+        output_file = open('../output/' + output_file_name, 'w+')
+
+        features_file_name = "devel_features.txt"
+        features_file = open('../features/' + features_file_name, 'r')
+        features_without_sent_file_name = "devel_features.features"
+
+        sentences_info, sent_features = parse_features(features_file)
+        features_file.close()
+
+        prediction_file_name = "Devel.test"
+        predict(features_without_sent_file_name, prediction_file_name)
+        prediction_file = open('../output/' + prediction_file_name, 'r')
+
+        predictions = parse_prediction(prediction_file)
+
+        for prediction, (sid, id_e1, id_e2) in zip(predictions, sentences_info):
+            is_ddi = 1 if prediction != 'null' else 0
+            print("|".join([sid, id_e1, id_e2, str(is_ddi), prediction]), file=output_file)
+
+        # Close the file
+        output_file.close()
+        print(evaluate(input_directory, output_file_name))
+
+    elif stage == 'Predict_Test':
+        input_directory = '../data/Test-DDI/'
+        output_file_name = "task9.2_test-out_1.txt"
+        output_file = open('../output/' + output_file_name, 'w+')
+
+        features_file_name = "test_features.txt"
+        features_file = open('../features/' + features_file_name, 'r')
+        features_without_sent_file_name = "test_features.features"
+
+        sentences_info, sent_features = parse_features(features_file)
+        features_file.close()
+
+        prediction_file_name = "Test.test"
+        predict(features_without_sent_file_name, prediction_file_name)
+        prediction_file = open('../output/' + prediction_file_name, 'r')
+
+        predictions = parse_prediction(prediction_file)
+
+        for prediction, (sid, id_e1, id_e2) in zip(predictions, sentences_info):
+            is_ddi = 1 if prediction != 'null' else 0
+            print("|".join([sid, id_e1, id_e2, str(is_ddi), prediction]), file=output_file)
+
+        # Close the file
+        output_file.close()
+        print(evaluate(input_directory, output_file_name))
