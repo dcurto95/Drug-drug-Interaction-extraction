@@ -279,16 +279,22 @@ def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, dic, good_dic
     inbetween_text = extract_inbetween_text(analysis, entities, id_e1, id_e2)
     (is_ddi, ddi_type) = rules_without_dependency(inbetween_text)
 
+    e1_off = entities[id_e1]
+    e2_off = entities[id_e2]
+
+    drug1, drug2 = extract_drug_names(analysis, e1_off, e2_off)
+    if drug1 == drug2:
+        return 0, 'null'
+
     if is_ddi:
         return is_ddi, ddi_type
+    '''
     if analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest']:
         return 1, 'advise'
     if analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce']:
         return 1, 'effect'
+    '''
     # TODO: NO BORRAR UTIL PER DEPENDENCY TREE
-    e1_off = entities[id_e1]
-    e2_off = entities[id_e2]
-
     for word_index in range(1, len(analysis.nodes)):
         token_info = analysis.nodes[word_index]
         entity_list_tokens = []
@@ -334,10 +340,57 @@ def extract_inbetween_text(analysis, entities, id_e1, id_e2):
     return inbetween_text
 
 
+def extract_drug_names(analysis, e1_off, e2_off):
+    nodes_drug1 = []
+    nodes_drug2 = []
+    sentece_analysis = [None] * 2
+
+    start_drug1 = entities[id_e1][0][0]
+    start_drug2 = entities[id_e2][0][0]
+    end_drug1 = entities[id_e1][0][1] if len(entities[id_e1] < 2) else entities[id_e1][1][1]
+    end_drug2 = entities[id_e2][0][1] if len(entities[id_e2] < 2) else entities[id_e2][1][1]
+    for i_node in range(1, len(analysis.nodes)):
+        current_node = analysis.nodes[i_node]
+        start = current_node["start_off"]
+        end = current_node["end_off"]
+
+        if start == start_drug1 or (start < start_drug1 <= end):
+            nodes_drug1.append(current_node)
+        if start == start_drug2 or (start < start_drug2 <= end):
+            nodes_drug2.append(current_node)
+        if start != start_drug1:
+            if end == end_drug1 or (start < end_drug1 <= end) or(start_drug1 < end < end_drug1):
+                nodes_drug1.append(current_node)
+        if start != start_drug2:
+            if end == end_drug2 or (start < end_drug2 <= end) or(start_drug2 < end < end_drug2):
+                nodes_drug2.append(current_node)
+
+    drug_1 = []
+    for node in nodes_drug1:
+        if len(entities[id_e1]) < 2:
+            drug_1.append(node["word"])
+        else:
+            if not(node["start_off"] > entities[id_e1][0][1] and node["end_off"] < entities[id_e1][1][0]):
+                drug_1.append(node["word"])
+
+    drug_2 = []
+    for node in nodes_drug2:
+        if len(entities[id_e2]) < 2:
+            drug_2.append(node["word"])
+        else:
+            if not(node["start_off"] > entities[id_e2][0][1] and node["end_off"] < entities[id_e2][1][0]):
+                drug_2.append(node["word"])
+
+    drug_1 = " ".join(drug_1)
+    drug_2 = " ".join(drug_2)
+
+    return drug_1, drug_2
+
 def rules_without_dependency(sentence):
     is_ddi = 0
     ddi_type = "null"
 
+    effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
     effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
 
     if "effect" in sentence: #any(x in sentence for x in effect_list):
@@ -358,7 +411,7 @@ def rules_without_dependency(sentence):
 
 if __name__ == '__main__':
     output_file_name = "task9.2_out_1.txt"
-    input_directory = '../data/Test-DDI/'
+    input_directory = '../data/Devel/'
 
     output_file = open('../output/' + output_file_name, 'w+')
     # get_training_statistic()
