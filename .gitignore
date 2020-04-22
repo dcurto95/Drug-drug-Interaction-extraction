@@ -10,3 +10,5 @@ src/missing_pairs.txt
 src/analysis.csv
 src/__pycache__/*
 src/missing_pairs_ancestor.txt
+features/*
+models/*
