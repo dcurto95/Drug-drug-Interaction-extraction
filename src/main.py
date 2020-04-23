@@ -5,11 +5,9 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 import pandas as pd
-from chemdataextractor.nlp.tokenize import ChemWordTokenizer
 from nltk import word_tokenize
 from nltk.parse.corenlp import CoreNLPDependencyParser
-from nltk.parse import DependencyGraph
-import networkx as nx
+import matplotlib.pyplot as plt
 
 def parse_xml(file):
     tree = ET.parse(file)
@@ -42,105 +40,6 @@ def tokenize(text):
 
 def evaluate(inputdir, outputfile):
     return os.system("java -jar ../eval/evaluateDDI.jar " + inputdir + " ../output/" + outputfile)
-
-
-def get_training_statistic():
-    output_file_name = "task9.2_out_1.txt"
-    input_directory = '../data/Devel/'
-
-    output_file = open('../output/' + output_file_name, 'w+')
-
-    types = []
-    drugs_interact = []
-    sentences = []
-    distance = []
-    count_words_between = []
-    # Process each file in the directory
-    for index_file, filename in enumerate(os.listdir(input_directory)):
-        # Parse XML file
-        print(index_file, "out of ", len(os.listdir(input_directory)))
-        root = parse_xml(input_directory + filename)
-        # print(" - File:", filename)
-
-        for child in root:
-            sid, text = get_sentence_info(child)
-            entities = {}
-            if not text:
-                continue
-            for entity in child.findall('entity'):
-                id = entity.get('id')
-                offset = entity.get('charOffset')
-                if ';' in offset:
-                    offset = offset.split(";")
-                else:
-                    offset = [offset]
-                ent_offset = []
-                for off in offset:
-                    ent_offset.append(tuple([int(i) for i in off.split("-")]))
-                entities[id] = np.asarray(ent_offset)
-
-            analysis = analyze(text)
-
-            for pair in child.findall('pair'):
-                id_e1 = pair.get('e1')
-                id_e2 = pair.get('e2')
-                ddi = pair.get('ddi')
-                type = pair.get('type')
-
-                types.append(type)
-                offset_1 = entities[id_e1][0]
-                offset_2 = entities[id_e2][0]
-                drug_1 = drug_2 = ""
-                end = 0
-                start = offset_1[0]
-                if len(offset_1) > 2:
-                    drug_1 = text[offset_1[0]:offset_1[1] + 1] + text[offset_1[2]:offset_1[3] + 1]
-                else:
-                    drug_1 = text[offset_1[0]:offset_1[1] + 1]
-                if len(offset_2) > 2:
-                    drug_2 = text[offset_2[0]:offset_2[1] + 1] + text[offset_2[2]:offset_2[3] + 1]
-                    end = offset_2[3]
-                else:
-                    drug_2 = text[offset_2[0]:offset_2[1] + 1]
-                    end = offset_2[1]
-                drugs_interact.append((drug_1, drug_2))
-                distance.append(end - start)
-                sentence = text[start:end]
-                count_words_between.append(len(sentence.split()) - 2)
-                sentences.append(sentence)
-
-                is_ddi = 0
-                ddi_type = "null"
-
-                if "effect" in sentence:
-                    is_ddi = 1
-                    ddi_type = "effect"
-
-                if "should" in sentence:
-                    is_ddi = 1
-                    ddi_type = "advise"
-
-                if "increase" in sentence or "decrease" in sentence or "reduce" in sentence:
-                    is_ddi = 1
-                    ddi_type = "mechanism"
-
-                if "interact" in sentence or "interaction" in sentence:
-                    is_ddi = 1
-                    ddi_type = "int"
-
-                # TODO: Add rules in Check interaction
-                # (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2)
-
-                print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
-
-    # Close the file
-    output_file.close()
-    print(evaluate(input_directory, output_file_name))
-
-    df = pd.DataFrame(list(zip(types, drugs_interact, sentences, distance, count_words_between)),
-                      columns=['Type', 'Drug_Interact', 'Sentence', 'Distance', 'CountWordsBetween'])
-
-    df.to_csv('analysis.csv', index=False)
 
 
 def add_offset_to_tree(parse, text, offset=0):
@@ -268,6 +167,26 @@ def find_common_verb_ancestor(analysis, first_index, second_index):
     return analysis.root['address']
 
 
+def find_common_ancestor(analysis, first_index, second_index):
+    visited_first = [first_index]
+    visited_second = [second_index]
+
+    while not (analysis.root['address'] in visited_first and analysis.root['address'] in visited_second):
+        head = analysis.nodes[first_index]['head']
+        if head is not None:
+            visited_first.append(head)
+            first_index = head
+        head = analysis.nodes[second_index]['head']
+        if head is not None:
+            visited_second.append(head)
+            second_index = head
+        intersection = list(set(visited_first) & set(visited_second))
+        if intersection:
+                return analysis.nodes[intersection[0]]["lemma"], analysis.nodes[intersection[0]]["tag"]
+
+    return 'None', 'None'
+
+
 def check_common_ancestor(ancestor_token):
     # if ancestor_token['lemma'] in ['report', 'interaction', 'suggest']:
     #     return 1, 'int'
@@ -276,7 +195,7 @@ def check_common_ancestor(ancestor_token):
     return 0, 'null'
 
 
-def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, truth_type, dic, good_dic):
+def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, truth_type, dic, good_dic, infos):
 
     #print(analysis.to_conll(4))
     inbetween_text = extract_inbetween_text(analysis, entities, id_e1, id_e2)
@@ -287,43 +206,28 @@ def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, truth_type, d
 
     nodes_drug1, nodes_drug2 = extract_drug_nodes(analysis, e1_off, e2_off)
     drug1, drug2 = extract_drug_names(entities, id_e1, id_e2, nodes_drug1, nodes_drug2)
-
     head_drug1, head_drug2 = extract_head_drugs_info(analysis, nodes_drug1, nodes_drug2)
+    distance = extract_distance_between_drugs(nodes_drug1, nodes_drug2)
+
+
+    #if distance < 1 or distance > 60:
+    #    return 0, 'null'
 
     if drug1 == drug2:
         return 0, 'null'
 
-    if is_ddi:
-        return is_ddi, ddi_type
+    common_ancestor_info = find_common_ancestor(analysis, nodes_drug1[0]["address"], nodes_drug2[0]["address"])
+    if common_ancestor_info[0] in ['interact', 'interaction']:
+        if common_ancestor_info[1] in ['NN', 'VB', 'NNS', 'VBP']:
+            return 1, 'int'
     '''
     if analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest']:
         return 1, 'advise'
     if analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce']:
         return 1, 'effect'
     '''
-    # TODO: NO BORRAR UTIL PER DEPENDENCY TREE
-    for word_index in range(1, len(analysis.nodes)):
-        token_info = analysis.nodes[word_index]
-        entity_list_tokens = []
-
-        for (e1_start_off, e1_end_off), (e2_start_off, e2_end_off) in zip(e1_off, e2_off):
-            if 'start_off' in token_info and (token_info['start_off'] == e1_start_off or (
-                    token_info['start_off'] < e1_start_off <= token_info['end_off'])):
-                # Start offset matches or start offset is inside token
-                entity_list_tokens.append(token_info)
-                aux_word_index = word_index
-
-                # If entity is longer than token add to token list
-                while token_info['end_off'] < e1_end_off:
-                    aux_word_index += 1
-                    token_info = analysis.nodes[aux_word_index]
-                    entity_list_tokens.append(token_info)
-
-                second_index = find_second_entity(analysis, word_index, e2_start_off)
-                common_ancestor_index = find_common_verb_ancestor(analysis, word_index, second_index)
-                return check_common_ancestor(analysis.nodes[common_ancestor_index])
-    #             return check_dependency(analysis, entity_list_tokens, e2_start_off, word_index, second_index, truth_ddi,
-    #                                     dic, good_dic)
+    if is_ddi:
+        return is_ddi, ddi_type
 
     return 0, 'null'
 
@@ -331,10 +235,25 @@ def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, truth_type, d
 def extract_head_drugs_info(analysis, nodes_drug1, nodes_drug2):
     drug1_node = nodes_drug1[0]
     drug2_node = nodes_drug2[0]
-    head_drug1 = analysis.nodes[drug1_node["head"]]
-    head_drug2 = analysis.nodes[drug2_node["head"]]
-    lemma_pos_d1 = (head_drug1["lemma"], head_drug1["tag"])
-    lemma_pos_d2 = (head_drug2["lemma"], head_drug2["tag"])
+    counter_d1 = counter_d2 = 0
+    head1_found = head2_found = False
+    while not head1_found or not head2_found:
+        head_drug1 = analysis.nodes[drug1_node["head"]]
+        head_drug2 = analysis.nodes[drug2_node["head"]]
+        lemma_pos_d1 = (head_drug1["lemma"], head_drug1["tag"])
+        lemma_pos_d2 = (head_drug2["lemma"], head_drug2["tag"])
+        if head_drug1 in nodes_drug1:
+            counter_d1 = counter_d1 + 1
+            drug1_node = nodes_drug1[counter_d1]
+        else:
+            head1_found = True
+        if head_drug2 in nodes_drug2:
+            counter_d2 = counter_d2 + 1
+            drug2_node = nodes_drug2[counter_d2]
+        else:
+            head2_found = True
+
+
 
     return lemma_pos_d1, lemma_pos_d2
 
@@ -370,8 +289,10 @@ def extract_drug_nodes(analysis, e1_off, e2_off):
 
     start_drug1 = entities[id_e1][0][0]
     start_drug2 = entities[id_e2][0][0]
-    end_drug1 = entities[id_e1][0][1] if len(entities[id_e1] < 2) else entities[id_e1][1][1]
-    end_drug2 = entities[id_e2][0][1] if len(entities[id_e2] < 2) else entities[id_e2][1][1]
+    #end_drug1 = entities[id_e1][0][1] if len(entities[id_e1] < 2) else entities[id_e1][1][1]
+    #end_drug2 = entities[id_e2][0][1] if len(entities[id_e2] < 2) else entities[id_e2][1][1]
+    end_drug1 = entities[id_e1][0][1] if len(entities[id_e1]) < 2 else entities[id_e1][len(entities[id_e1]) - 1][1]
+    end_drug2 = entities[id_e2][0][1] if len(entities[id_e2]) < 2 else entities[id_e2][len(entities[id_e1]) - 1][1]
 
     for i_node in range(1, len(analysis.nodes)):
         current_node = analysis.nodes[i_node]
@@ -389,9 +310,7 @@ def extract_drug_nodes(analysis, e1_off, e2_off):
             if end == end_drug2 or (start < end_drug2 <= end) or(start_drug2 < end < end_drug2):
                 nodes_drug2.append(current_node)
 
-    return  nodes_drug1, nodes_drug2
-
-
+    return nodes_drug1, nodes_drug2
 
 
 def extract_drug_name(entities,id, nodes_drug):
@@ -403,7 +322,6 @@ def extract_drug_name(entities,id, nodes_drug):
             if not (node["start_off"] > entities[id][0][1] and node["end_off"] < entities[id][1][0]):
                 drug.append(node["word"])
     return " ".join(drug)
-
 
 def rules_without_dependency(sentence):
     is_ddi = 0
@@ -421,28 +339,52 @@ def rules_without_dependency(sentence):
     if "increase" in sentence or "decrease" in sentence or "reduce" in sentence:
         is_ddi = 1
         ddi_type = "mechanism"
-    if "interact" in sentence:
-        is_ddi = 1
-        ddi_type = "int"
 
     return is_ddi, ddi_type
 
 
+def extract_distance_between_drugs(nodes_drug1, nodes_drug2):
+    try:
+        max_d1 = max([i["address"] for i in nodes_drug1])
+        min_d1 = min([i["address"] for i in nodes_drug2])
+        distance = abs(min_d1 - max_d1)
+        return distance
+    except:
+        return 99
+
+
+def show_statistics(df):
+    filter_df = df[df.IsDDI.eq("false")]
+    filter_df = pd.DataFrame(filter_df, columns=['Distance'])
+    print(filter_df.describe())
+    plt.hist(filter_df["Distance"])
+    filter_df = df[df.IsDDI.eq("true")]
+    print(filter_df['Distance'].describe())
+    plt.hist(filter_df["Distance"])
+    plt.show()
+
+
 if __name__ == '__main__':
     output_file_name = "task9.2_out_1.txt"
-    input_directory = '../data/Devel/'
-
+    input_directory = '../data/Test-DDI/'
+    exploration = False
     output_file = open('../output/' + output_file_name, 'w+')
-    # get_training_statistic()
 
     dic = {}
     good_dic = {}
 
+    ddis = []
     types = []
-    drugs_interact = []
+    heads_d1 = []
+    heads_d2 = []
+    drugs_1 = []
+    drugs_2 = []
+    postags_d1 = []
+    postags_d2 = []
     sentences = []
-    distance = []
-    count_words_between = []
+    distances = []
+    infos = []
+
 
     # Process each file in the directory
     for index_file, filename in enumerate(os.listdir(input_directory)):
@@ -473,13 +415,79 @@ if __name__ == '__main__':
                 id_e1 = pair.get('e1')
                 id_e2 = pair.get('e2')
                 type = pair.get('type')
+                ddi = pair.get('ddi')
+
+                e1_off = entities[id_e1]
+                e2_off = entities[id_e2]
+
+                if exploration:
+                    nodes_drug1, nodes_drug2 = extract_drug_nodes(analysis, e1_off, e2_off)
+                    drug1, drug2 = extract_drug_names(entities, id_e1, id_e2, nodes_drug1, nodes_drug2)
+                    head_drug1, head_drug2 = extract_head_drugs_info(analysis, nodes_drug1, nodes_drug2)
+                    distance = extract_distance_between_drugs(nodes_drug1, nodes_drug2)
+
+                    types.append(type)
+                    heads_d1.append(head_drug1[0])
+                    heads_d2.append(head_drug2[0])
+                    drugs_1.append(drug1)
+                    drugs_2.append(drug2)
+                    postags_d1.append(head_drug1[1])
+                    postags_d2.append(head_drug2[1])
+                    sentences.append(text)
+                    ddis.append(ddi)
+                    distances.append(distance)
 
                 (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2, pair.get('ddi'),type, dic,
-                                                       good_dic)
+                                                      good_dic, infos)
 
                 print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
 
-            # output_entities(sid, entities, output_file)
+
+    #df = pd.DataFrame.from_records(infos)
+    #df.columns = ["DDI", "Type", "AncestorLemma", "AncestorPoS"]
+    #df.to_excel("common_node_test.xlsx")
+    if exploration:
+
+        no_ddi = df[(df.DDI == "false")]
+        ddi_effect = df[(df.DDI == "true") & (df.Type == "effect")]
+        ddi_int = df[(df.DDI == "true") & (df.Type == "int")]
+        ddi_mechanism = df[(df.DDI == "true") & (df.Type == "mechanism")]
+        ddi_advise = df[(df.DDI == "true") & (df.Type == "advise")]
+
+        print(ddi_effect.AncestorLemma.value_counts())
+        print(ddi_int.AncestorLemma.value_counts())
+        print(ddi_mechanism.AncestorLemma.value_counts())
+        print(ddi_advise.AncestorLemma.value_counts())
+        print(no_ddi.AncestorLemma.value_counts())
+
+        plt.subplot(221)
+        plt.xticks(rotation='vertical')
+        ddi_effect.AncestorLemma.value_counts()[:20].plot(kind='barh')
+
+        plt.subplot(222)
+        plt.xticks(rotation='vertical')
+        ddi_int.AncestorLemma.value_counts()[:20].plot(kind='barh')
+
+        plt.subplot(223)
+        plt.xticks(rotation='vertical')
+        ddi_mechanism.AncestorLemma.value_counts()[:20].plot(kind='barh')
+
+        plt.subplot(224)
+        plt.xticks(rotation='vertical')
+        ddi_advise.AncestorLemma.value_counts()[:20].plot(kind='barh')
+
+        plt.show()
+        plt.figure()
+        no_ddi.AncestorLemma.value_counts()[:20].plot(kind='barh')
+        plt.show()
+
+        df = pd.DataFrame(list(zip(ddis, types, drugs_1, drugs_2, heads_d1, heads_d2, postags_d1, postags_d2, distances, sentences)),
+                          columns=['IsDDI', 'Type', 'Drug1', 'Drug2', 'HeadDrug1', 'HeadDrug2', 'PoSDrug1', 'PoSDrug2', 'Distance', 'Sentence'])
+
+        df.to_excel("train_analysis.xlsx")
+        show_statistics(df)
+
+
     dic = {k: v for k, v in sorted(dic.items(), key=lambda item: item[1], reverse=True)}
     print("DICT:", dic)
     good_dic = {k: v for k, v in sorted(good_dic.items(), key=lambda item: item[1], reverse=True)}
@@ -487,3 +495,4 @@ if __name__ == '__main__':
     # Close the file
     output_file.close()
     print(evaluate(input_directory, output_file_name))
+
