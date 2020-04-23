@@ -1,12 +1,8 @@
 import os
-import re
-import string
+import pickle
 import xml.etree.ElementTree as ET
 
 import numpy as np
-import pandas as pd
-from chemdataextractor.nlp.tokenize import ChemWordTokenizer
-from nltk import word_tokenize
 from nltk.parse.corenlp import CoreNLPDependencyParser
 
 
@@ -24,7 +20,8 @@ def evaluate(inputdir, outputfile):
 
 
 def create_model(features_file_name):
-    return os.system("ubuntu run ./megam-64.opt -quiet -nc -nobias multiclass ../features/" + features_file_name + " > ../models/model.dat")
+    return os.system(
+        "ubuntu run ./megam-64.opt -quiet -nc -nobias multiclass ../features/" + features_file_name + " > ../models/model.dat")
 
 
 def predict(features_file_name, test_name, model_file_name="../models/model.dat"):
@@ -66,64 +63,24 @@ def analyze(stext):
     return parse
 
 
-def basic_rules(word, lemma):
+def basic_features(in_between_text, feature_priority):
     advise_list = ['can', 'could', 'may', 'might', 'will', 'shall', 'should', 'ought', 'must', 'would']
-    advise_string = ' '.join(advise_list)
     effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
-    effect_string = ' '.join(effect_list)
     mechanism_list = ['reduce', 'increase', 'decrease']
-    mechanism_string = ' '.join(mechanism_list)
     int_list = ['interact', 'interaction', 'interfere']
-    int_string = ' '.join(int_list)
 
-    if word in int_list:
-        return 'int'
-    if word in advise_list:
-        return 'advise'
-    if word in effect_list:
-        return 'effect'
-    if word in mechanism_list:
-        return 'mechanism'
-    return None
+    times = {}
+    for word in in_between_text.split():
+        if word in int_list:
+            times['int'] = times.get('int', 0) + 1
+        if word in advise_list:
+            times['advise'] = times.get('advise', 0) + 1
+        if word in effect_list:
+            times['effect'] = times.get('effect', 0) + 1
+        if word in mechanism_list:
+            times['mechanism'] = times.get('mechanism', 0) + 1
 
-
-def check_dependency(analysis, tokens_info, e2_start_off, first_index, second_index, truth_ddi, dic, good_dic):
-    # Deps_types: effect, int, mechanis, advise and null
-    if truth_ddi == 'false':
-        dic[second_index - first_index] = dic.get(second_index - first_index, 0) + 1
-    else:
-        good_dic[second_index - first_index] = good_dic.get(second_index - first_index, 0) + 1
-
-    for token_info in tokens_info:
-        for index in range(1, len(analysis.nodes)):
-            if index < first_index:
-                # Search before
-                # category = basic_rules(analysis.nodes[index]['word'])
-                # if category is not None:
-                #     return 1, category
-                pass
-
-            if first_index <= index <= second_index:
-                # Search between words
-                category = basic_rules(analysis.nodes[index]['word'].lower(), analysis.nodes[index]['lemma'])
-                if category is not None:
-                    return 1, category
-            if index > second_index:
-                # Search after words
-                # category = basic_rules(analysis.nodes[index]['word'])
-                # if category is not None:
-                #     return 1, category
-                pass
-
-        if 'start_off' in analysis.nodes[token_info['head']] and \
-                analysis.nodes[token_info['head']]['start_off'] == e2_start_off:
-            return 0, 'null'
-        for dep_rel, value in token_info['deps'].items():
-            for dependency in value:
-                if 'start_off' in analysis.nodes[dependency] and \
-                        analysis.nodes[dependency]['start_off'] == e2_start_off:
-                    return 0, 'null'
-    return 0, 'null'
+    return [(feature_priority, key + "=" + str(value)) for key, value in times.items()]
 
 
 def find_second_entity(analysis, word_index, e2_start_off):
@@ -157,52 +114,50 @@ def find_common_verb_ancestor(analysis, first_index, second_index):
     return analysis.root['address']
 
 
-def check_common_ancestor(ancestor_token):
-    # if ancestor_token['lemma'] in ['report', 'interaction', 'suggest']:
-    #     return 1, 'int'
-    if ancestor_token['lemma'] in ['approach', 'recommend', 'contraindicate']:
-        return 1, 'advise'
-    return 0, 'null'
+def find_common_ancestor(analysis, first_index, second_index):
+    visited_first = [first_index]
+    visited_second = [second_index]
+
+    while not (analysis.root['address'] in visited_first and analysis.root['address'] in visited_second):
+        head = analysis.nodes[first_index]['head']
+        if head is not None:
+            visited_first.append(head)
+            first_index = head
+        head = analysis.nodes[second_index]['head']
+        if head is not None:
+            visited_second.append(head)
+            second_index = head
+        intersection = list(set(visited_first) & set(visited_second))
+        if intersection:
+            return intersection[0], visited_first, visited_second
+
+    return analysis.root['address'], visited_first, visited_second
 
 
-def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, dic, good_dic):
-    inbetween_text = extract_inbetween_text(analysis, entities, id_e1, id_e2)
-    (is_ddi, ddi_type) = rules_without_dependency(inbetween_text)
+def get_vertical_order_features(analysis, first_index, second_index, feature_priority):
+    original_first = first_index
+    original_second = second_index
 
-    if is_ddi:
-        return is_ddi, ddi_type
-    if analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest']:
-        return 1, 'advise'
-    if analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce']:
-        return 1, 'effect'
-    # TODO: NO BORRAR UTIL PER DEPENDENCY TREE
-    e1_off = entities[id_e1]
-    e2_off = entities[id_e2]
+    visited_first = [first_index]
+    visited_second = [second_index]
 
-    for word_index in range(1, len(analysis.nodes)):
-        token_info = analysis.nodes[word_index]
-        entity_list_tokens = []
+    while not (analysis.root['address'] in visited_first and analysis.root['address'] in visited_second):
+        head = analysis.nodes[first_index]['head']
+        if head is not None:
+            visited_first.append(head)
+            first_index = head
 
-        for (e1_start_off, e1_end_off), (e2_start_off, e2_end_off) in zip(e1_off, e2_off):
-            if 'start_off' in token_info and (token_info['start_off'] == e1_start_off or (
-                    token_info['start_off'] < e1_start_off <= token_info['end_off'])):
-                # Start offset matches or start offset is inside token
-                entity_list_tokens.append(token_info)
-                aux_word_index = word_index
+        head = analysis.nodes[second_index]['head']
+        if head is not None:
+            visited_second.append(head)
+            second_index = head
 
-                # If entity is longer than token add to token list
-                while token_info['end_off'] < e1_end_off:
-                    aux_word_index += 1
-                    token_info = analysis.nodes[aux_word_index]
-                    entity_list_tokens.append(token_info)
+        if original_first in visited_second:
+            return [(feature_priority, "e1_over_e2")]
+        if original_second in visited_first:
+            return [(feature_priority, "e2_over_e1")]
 
-                second_index = find_second_entity(analysis, word_index, e2_start_off)
-                common_ancestor_index = find_common_verb_ancestor(analysis, word_index, second_index)
-                return check_common_ancestor(analysis.nodes[common_ancestor_index])
-    #             return check_dependency(analysis, entity_list_tokens, e2_start_off, word_index, second_index, truth_ddi,
-    #                                     dic, good_dic)
-
-    return 0, 'null'
+    return [(feature_priority, "no_realtion")]
 
 
 def extract_inbetween_text(analysis, entities, id_e1, id_e2):
@@ -224,28 +179,111 @@ def extract_inbetween_text(analysis, entities, id_e1, id_e2):
     return inbetween_text
 
 
-def rules_without_dependency(sentence):
+def rules_without_dependency(sentence, feature_priority):
     features = []
 
-    features.append("Contains_effect=" + str("effect" in sentence))
-    features.append("Contains_should=" + str("should" in sentence))
-    features.append("Contains_mechanism_word=" + str("increase" in sentence or "decrease" in sentence or "reduce" in sentence))
-    features.append("Contains_interact=" + str("interact" in sentence))
+    features.append((feature_priority, "Contains_effect=" + str("effect" in sentence)))
+    features.append((feature_priority, "Contains_should=" + str("should" in sentence)))
+    features.append((feature_priority,
+                     "Contains_mechanism_word=" + str(
+                         "increase" in sentence or "decrease" in sentence or "reduce" in sentence)))
+    features.append((feature_priority, "Contains_interact=" + str("interact" in sentence)))
 
     return features
+
+
+def get_common_ancestor_features(common_ancestor_node, feature_priority):
+    common_ancestor_features = []
+
+    common_ancestor_features.append((feature_priority, "ancestor_lemma=" + common_ancestor_node['lemma'].lower()))
+    common_ancestor_features.append((feature_priority, "ancestor_word=" + common_ancestor_node['word'].lower()))
+    common_ancestor_features.append((feature_priority, "ancestor_tag=" + common_ancestor_node['tag'].lower()))
+    common_ancestor_features.append((feature_priority, "ancestor_rel=" + common_ancestor_node['rel'].lower()))
+
+    return common_ancestor_features
+
+
+def get_dependency_path(analysis, first_route, second_route, common_ancestor_index):
+    path = "path="
+    rel_path = "rel_path="
+
+    route = first_route[:first_route.index(common_ancestor_index) + 1] + second_route[:second_route.index(common_ancestor_index)][::-1]
+    for index in route:
+        path += analysis.nodes[index]['lemma']
+        rel_path += analysis.nodes[index]['rel']
+
+    return path, rel_path
+
+
+def analyze_dependency_tree(analysis, entities, id_e1, id_e2, feature_priority):
+    dependency_features = []
+
+    e1_off = entities[id_e1]
+    e2_off = entities[id_e2]
+
+    for word_index in range(1, len(analysis.nodes)):
+        token_info = analysis.nodes[word_index]
+        entity_list_tokens = []
+
+        for (e1_start_off, e1_end_off), (e2_start_off, e2_end_off) in zip(e1_off, e2_off):
+            if 'start_off' in token_info and (token_info['start_off'] == e1_start_off or (
+                    token_info['start_off'] < e1_start_off <= token_info['end_off'])):
+                # Start offset matches or start offset is inside token
+                entity_list_tokens.append(token_info)
+                aux_word_index = word_index
+
+                # If entity is longer than token add to token list
+                while token_info['end_off'] < e1_end_off:
+                    aux_word_index += 1
+                    token_info = analysis.nodes[aux_word_index]
+                    entity_list_tokens.append(token_info)
+
+                second_index = find_second_entity(analysis, word_index, e2_start_off)
+
+                order_features = get_vertical_order_features(analysis, word_index, second_index, feature_priority + 0.2)
+                dependency_features.extend(order_features)
+
+                common_ancestor_index, first_path, second_path = find_common_ancestor(analysis, word_index, second_index)
+                common_verb_ancestor_index = find_common_verb_ancestor(analysis, word_index, second_index)
+
+                common_ancestor_features = get_common_ancestor_features(analysis.nodes[common_ancestor_index],
+                                                                        feature_priority + 0.1)
+                dependency_features.extend(common_ancestor_features)
+                common_ancestor_features = get_common_ancestor_features(analysis.nodes[common_verb_ancestor_index],
+                                                                        feature_priority + 0.3)
+                dependency_features.extend(common_ancestor_features)
+                path, rel_path = get_dependency_path(analysis, first_path, second_path, common_ancestor_index)
+
+                dependency_features.append((feature_priority + 0.4, path))
+                dependency_features.append((feature_priority + 0.4, rel_path))
+
+                entities_features = get_entities_info(analysis, word_index, second_index)
+
+                return dependency_features
+    return dependency_features
 
 
 def extract_features(analysis, entities, id_e1, id_e2):
     features = []
 
     inbetween_text = extract_inbetween_text(analysis, entities, id_e1, id_e2)
-    rule_features = rules_without_dependency(inbetween_text)
-
+    rule_features = rules_without_dependency(inbetween_text, 1)
     features.extend(rule_features)
-    features.append("lemma_advise=" + str(analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest']))
-    features.append("lemma_effect=" + str(analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce']))
 
-    return features
+    basic_features_list = basic_features(inbetween_text, 2)
+    features.extend(basic_features_list)
+
+    # features.append("lemma_root=" + analysis.root['lemma'])
+    # features.append("lemma_tag=" + analysis.root['tag'])
+    features.append(
+        (2, "lemma_advise=" + str(analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest'])))
+    features.append((2, "lemma_effect=" + str(analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce'])))
+
+    dependency_features = analyze_dependency_tree(analysis, entities, id_e1, id_e2, 3)
+    features.extend(dependency_features)
+
+    features = sorted(features, key=lambda x: x[0])
+    return np.asarray(features)[:, 1]
 
 
 def save_features(features_file_name, input_directory, training=False):
@@ -292,6 +330,71 @@ def save_features(features_file_name, input_directory, training=False):
     features_file.close()
 
 
+def save_features_quick(features_file_name, input_directory, training=False):
+    features_file = open('../features/' + features_file_name + '.txt', 'w+')
+    features_file_without_sent = open('../features/' + features_file_name + '.features', 'w+')
+
+    name = input_directory.split("/")[-2]
+    pickle_in = open("../pickle/" + name + ".pickle", "rb")
+    sentence_list = pickle.load(pickle_in)
+
+    for sid, entities, analysis, id_e1, id_e2, ddi_type in sentence_list:
+        features = extract_features(analysis, entities, id_e1, id_e2)
+
+        print("\t".join([sid, id_e1, id_e2, ddi_type, "\t".join(features)]), file=features_file)
+        if training:
+            print("\t".join([ddi_type, "\t".join(features)]), file=features_file_without_sent)
+        else:
+            print("\t".join(features), file=features_file_without_sent)
+    features_file.close()
+
+
+class DepTree:
+    def __init__(self, analysis):
+        self.nodes = dict(analysis.nodes.items())
+        self.root = analysis.root
+
+
+def load_pickle_sentences(input_directory):
+    sentence_list = []
+    # Process each file in the directory
+    for index_file, filename in enumerate(os.listdir(input_directory)):
+        # Parse XML file
+        root = parse_xml(input_directory + filename)
+        print(" - File:", filename, "(", index_file + 1, "out of ", len(os.listdir(input_directory)), ")")
+
+        for child in root:
+            sid, text = get_sentence_info(child)
+            entities = {}
+            if not text:
+                continue
+            for entity in child.findall('entity'):
+                id = entity.get('id')
+                offset = entity.get('charOffset')
+                if ';' in offset:
+                    offset = offset.split(";")
+                else:
+                    offset = [offset]
+                ent_offset = []
+                for off in offset:
+                    ent_offset.append(tuple([int(i) for i in off.split("-")]))
+                entities[id] = np.asarray(ent_offset)
+
+            analysis = analyze(text)
+
+            analysis = DepTree(analysis)
+            for pair in child.findall('pair'):
+                id_e1 = pair.get('e1')
+                id_e2 = pair.get('e2')
+                ddi_type = pair.get('type') if pair.get('type') is not None else 'null'
+
+                sentence_list.append((sid, entities, analysis, id_e1, id_e2, ddi_type))
+    name = input_directory.split("/")[-2]
+    pickle_out = open("../pickle/" + name + ".pickle", "wb")
+    pickle.dump(sentence_list, pickle_out)
+    pickle_out.close()
+
+
 def parse_features(features_file):
     lines = features_file.readlines()
 
@@ -307,21 +410,49 @@ def parse_features(features_file):
     return sent_info, sent_features
 
 
-def create_features():
-    # Save Train features
-    features_file_name = "train_features"
-    input_directory = '../data/Train/'
-    save_features(features_file_name, input_directory, training=True)
+def create_features(quick):
+    if quick:
+        print("QUICK")
+        # Save Train features
+        features_file_name = "train_features"
+        input_directory = '../data/Train/'
+        save_features_quick(features_file_name, input_directory, training=True)
 
-    # Save Devel features
-    features_file_name = "devel_features"
-    input_directory = '../data/Devel/'
-    save_features(features_file_name, input_directory)
+        # Save Train features
+        features_file_name = "predict_train_features"
+        input_directory = '../data/Train/'
+        save_features_quick(features_file_name, input_directory)
 
-    # Save Test-DDI features
-    features_file_name = "test_features"
-    input_directory = '../data/Test-DDI/'
-    save_features(features_file_name, input_directory)
+        # Save Devel features
+        features_file_name = "devel_features"
+        input_directory = '../data/Devel/'
+        save_features_quick(features_file_name, input_directory)
+
+        # Save Test-DDI features
+        features_file_name = "test_features"
+        input_directory = '../data/Test-DDI/'
+        save_features_quick(features_file_name, input_directory)
+    else:
+        print("SLOW")
+        # Save Train features
+        features_file_name = "train_features"
+        input_directory = '../data/Train/'
+        save_features(features_file_name, input_directory, training=True)
+
+        # Save Train features
+        features_file_name = "predict_train_features"
+        input_directory = '../data/Train/'
+        save_features(features_file_name, input_directory)
+
+        # Save Devel features
+        features_file_name = "devel_features"
+        input_directory = '../data/Devel/'
+        save_features(features_file_name, input_directory)
+
+        # Save Test-DDI features
+        features_file_name = "test_features"
+        input_directory = '../data/Test-DDI/'
+        save_features(features_file_name, input_directory)
 
 
 def parse_prediction(prediction_file):
@@ -332,20 +463,40 @@ def parse_prediction(prediction_file):
     return predictions
 
 
-if __name__ == '__main__':
-    # Create_features -> Train -> Predict_Devel or Predict_Test
-    stage = 'Predict_Devel'
-
-    output_file_name = "task9.2_out_2.txt"
-
+def execute_stage(stage, quick=False):
     if stage == 'Create_features':
-        create_features()
+        create_features(quick)
 
     elif stage == 'Train':
         features_file_name = "train_features.features"
-        features_file = open('../features/' + features_file_name, 'r')
 
         create_model(features_file_name)
+
+    elif stage == 'Predict_Train':
+        input_directory = '../data/Train/'
+        output_file_name = "task9.2_train-out_1.txt"
+        output_file = open('../output/' + output_file_name, 'w+')
+
+        features_file_name = "predict_train_features.txt"
+        features_file = open('../features/' + features_file_name, 'r')
+        features_without_sent_file_name = "predict_train_features.features"
+
+        sentences_info, sent_features = parse_features(features_file)
+        features_file.close()
+
+        prediction_file_name = "Train.test"
+        predict(features_without_sent_file_name, prediction_file_name)
+        prediction_file = open('../output/' + prediction_file_name, 'r')
+
+        predictions = parse_prediction(prediction_file)
+
+        for prediction, (sid, id_e1, id_e2) in zip(predictions, sentences_info):
+            is_ddi = 1 if prediction != 'null' else 0
+            print("|".join([sid, id_e1, id_e2, str(is_ddi), prediction]), file=output_file)
+
+        # Close the file
+        output_file.close()
+        print(evaluate(input_directory, output_file_name))
 
     elif stage == 'Predict_Devel':
         input_directory = '../data/Devel/'
@@ -398,3 +549,28 @@ if __name__ == '__main__':
         # Close the file
         output_file.close()
         print(evaluate(input_directory, output_file_name))
+
+
+def load_pickles():
+    input_directory = '../data/Train/'
+    load_pickle_sentences(input_directory)
+
+    input_directory = '../data/Devel/'
+    load_pickle_sentences(input_directory)
+
+    input_directory = '../data/Test-DDI/'
+    load_pickle_sentences(input_directory)
+
+
+if __name__ == '__main__':
+    # Create_features -> Train -> Predict_Train, Predict_Devel or Predict_Test
+
+    # If full train process wants to be done:
+    stages = ['Create_features', 'Train', 'Predict_Train']
+    # stages = ['Predict_Train']
+
+    # load_pickles()
+    # print("PICKLES LOADED")
+
+    for stage in stages:
+        execute_stage(stage, quick=True)
