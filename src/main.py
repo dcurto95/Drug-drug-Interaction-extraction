@@ -8,7 +8,8 @@ import pandas as pd
 from chemdataextractor.nlp.tokenize import ChemWordTokenizer
 from nltk import word_tokenize
 from nltk.parse.corenlp import CoreNLPDependencyParser
-
+from nltk.parse import DependencyGraph
+import networkx as nx
 
 def parse_xml(file):
     tree = ET.parse(file)
@@ -275,20 +276,32 @@ def check_common_ancestor(ancestor_token):
     return 0, 'null'
 
 
-def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, dic, good_dic):
+def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, truth_type, dic, good_dic):
+
+    #print(analysis.to_conll(4))
     inbetween_text = extract_inbetween_text(analysis, entities, id_e1, id_e2)
     (is_ddi, ddi_type) = rules_without_dependency(inbetween_text)
 
+    e1_off = entities[id_e1]
+    e2_off = entities[id_e2]
+
+    nodes_drug1, nodes_drug2 = extract_drug_nodes(analysis, e1_off, e2_off)
+    drug1, drug2 = extract_drug_names(entities, id_e1, id_e2, nodes_drug1, nodes_drug2)
+
+    head_drug1, head_drug2 = extract_head_drugs_info(analysis, nodes_drug1, nodes_drug2)
+
+    if drug1 == drug2:
+        return 0, 'null'
+
     if is_ddi:
         return is_ddi, ddi_type
+    '''
     if analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest']:
         return 1, 'advise'
     if analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce']:
         return 1, 'effect'
+    '''
     # TODO: NO BORRAR UTIL PER DEPENDENCY TREE
-    e1_off = entities[id_e1]
-    e2_off = entities[id_e2]
-
     for word_index in range(1, len(analysis.nodes)):
         token_info = analysis.nodes[word_index]
         entity_list_tokens = []
@@ -315,6 +328,23 @@ def check_interaction(analysis, entities, id_e1, id_e2, truth_ddi, dic, good_dic
     return 0, 'null'
 
 
+def extract_head_drugs_info(analysis, nodes_drug1, nodes_drug2):
+    drug1_node = nodes_drug1[0]
+    drug2_node = nodes_drug2[0]
+    head_drug1 = analysis.nodes[drug1_node["head"]]
+    head_drug2 = analysis.nodes[drug2_node["head"]]
+    lemma_pos_d1 = (head_drug1["lemma"], head_drug1["tag"])
+    lemma_pos_d2 = (head_drug2["lemma"], head_drug2["tag"])
+
+    return lemma_pos_d1, lemma_pos_d2
+
+
+def extract_drug_names(entities, id_e1, id_e2, nodes_drug1, nodes_drug2):
+    drug1 = extract_drug_name(entities, id_e1, nodes_drug1)
+    drug2 = extract_drug_name(entities, id_e2, nodes_drug2)
+    return drug1, drug2
+
+
 def extract_inbetween_text(analysis, entities, id_e1, id_e2):
     index_drug1 = index_drug2 = 0
     sentece_analysis = [None] * (len(analysis.nodes) - 1)
@@ -334,10 +364,52 @@ def extract_inbetween_text(analysis, entities, id_e1, id_e2):
     return inbetween_text
 
 
+def extract_drug_nodes(analysis, e1_off, e2_off):
+    nodes_drug1 = []
+    nodes_drug2 = []
+
+    start_drug1 = entities[id_e1][0][0]
+    start_drug2 = entities[id_e2][0][0]
+    end_drug1 = entities[id_e1][0][1] if len(entities[id_e1] < 2) else entities[id_e1][1][1]
+    end_drug2 = entities[id_e2][0][1] if len(entities[id_e2] < 2) else entities[id_e2][1][1]
+
+    for i_node in range(1, len(analysis.nodes)):
+        current_node = analysis.nodes[i_node]
+        start = current_node["start_off"]
+        end = current_node["end_off"]
+
+        if start == start_drug1 or (start < start_drug1 <= end):
+            nodes_drug1.append(current_node)
+        if start == start_drug2 or (start < start_drug2 <= end):
+            nodes_drug2.append(current_node)
+        if start != start_drug1:
+            if end == end_drug1 or (start < end_drug1 <= end) or(start_drug1 < end < end_drug1):
+                nodes_drug1.append(current_node)
+        if start != start_drug2:
+            if end == end_drug2 or (start < end_drug2 <= end) or(start_drug2 < end < end_drug2):
+                nodes_drug2.append(current_node)
+
+    return  nodes_drug1, nodes_drug2
+
+
+
+
+def extract_drug_name(entities,id, nodes_drug):
+    drug = []
+    for node in nodes_drug:
+        if len(entities[id]) < 2:
+            drug.append(node["word"])
+        else:
+            if not (node["start_off"] > entities[id][0][1] and node["end_off"] < entities[id][1][0]):
+                drug.append(node["word"])
+    return " ".join(drug)
+
+
 def rules_without_dependency(sentence):
     is_ddi = 0
     ddi_type = "null"
 
+    effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
     effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
 
     if "effect" in sentence: #any(x in sentence for x in effect_list):
@@ -400,31 +472,9 @@ if __name__ == '__main__':
             for pair in child.findall('pair'):
                 id_e1 = pair.get('e1')
                 id_e2 = pair.get('e2')
-                # type = pair.get('type')
-                #
-                # types.append(type)
-                # offset_1 = entities[id_e1][0]
-                # offset_2 = entities[id_e2][0]
-                # drug_1 = drug_2 = ""
-                # end = 0
-                # start = offset_1[0]
-                # if len(offset_1) > 2:
-                #     drug_1 = text[offset_1[0]:offset_1[1] + 1] + text[offset_1[2]:offset_1[3] + 1]
-                # else:
-                #     drug_1 = text[offset_1[0]:offset_1[1] + 1]
-                # if len(offset_2) > 2:
-                #     drug_2 = text[offset_2[0]:offset_2[1] + 1] + text[offset_2[2]:offset_2[3] + 1]
-                #     end = offset_2[3]
-                # else:
-                #     drug_2 = text[offset_2[0]:offset_2[1] + 1]
-                #     end = offset_2[1]
-                # drugs_interact.append((drug_1, drug_2))
-                # distance.append(end - start)
-                # sentence = text[start:end]
-                # count_words_between.append(len(sentence.split()) - 2)
-                # sentences.append(sentence)
+                type = pair.get('type')
 
-                (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2, pair.get('ddi'), dic,
+                (is_ddi, ddi_type) = check_interaction(analysis, entities, id_e1, id_e2, pair.get('ddi'),type, dic,
                                                        good_dic)
 
                 print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_type]), file=output_file)
