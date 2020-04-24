@@ -12,3 +12,4 @@ src/__pycache__/*
 src/missing_pairs_ancestor.txt
 features/*
 models/*
+pickle/*
