@@ -2,8 +2,12 @@ import os
 import pickle
 import xml.etree.ElementTree as ET
 
+from sklearn.preprocessing import LabelEncoder
+from sklearn.svm import SVC
+
 import numpy as np
 from nltk.parse.corenlp import CoreNLPDependencyParser
+from sklearn.tree import DecisionTreeClassifier
 
 
 def parse_xml(file):
@@ -69,7 +73,7 @@ def basic_features(in_between_text, feature_priority):
     mechanism_list = ['reduce', 'increase', 'decrease']
     int_list = ['interact', 'interaction', 'interfere']
 
-    times = {}
+    times = {'int': 0, 'advise': 0, 'effect': 0, 'mechanism': 0}
     for word in in_between_text.split():
         if word in int_list:
             times['int'] = times.get('int', 0) + 1
@@ -182,23 +186,40 @@ def extract_inbetween_text(analysis, entities, id_e1, id_e2):
 def rules_without_dependency(sentence, feature_priority):
     features = []
 
-    features.append((feature_priority, "Contains_effect=" + str("effect" in sentence)))
-    features.append((feature_priority, "Contains_should=" + str("should" in sentence)))
+    features.append((feature_priority, "Contains_effect=" + str("effect" in sentence.lower())))
+    features.append((feature_priority, "Contains_should=" + str("should" in sentence.lower())))
     features.append((feature_priority,
                      "Contains_mechanism_word=" + str(
-                         "increase" in sentence or "decrease" in sentence or "reduce" in sentence)))
-    features.append((feature_priority, "Contains_interact=" + str("interact" in sentence)))
+                         "increase" in sentence or "decrease" in sentence or "reduce" in sentence.lower())))
+    features.append((feature_priority, "Contains_interact=" + str("interact" in sentence.lower())))
 
     return features
 
 
-def get_common_ancestor_features(common_ancestor_node, feature_priority):
+def get_common_ancestor_features(common_ancestor_node, feature_priority, text=""):
     common_ancestor_features = []
 
-    common_ancestor_features.append((feature_priority, "ancestor_lemma=" + common_ancestor_node['lemma'].lower()))
-    common_ancestor_features.append((feature_priority, "ancestor_word=" + common_ancestor_node['word'].lower()))
-    common_ancestor_features.append((feature_priority, "ancestor_tag=" + common_ancestor_node['tag'].lower()))
-    common_ancestor_features.append((feature_priority, "ancestor_rel=" + common_ancestor_node['rel'].lower()))
+    common_ancestor_features.append(
+        (feature_priority, text + "ancestor_lemma=" + common_ancestor_node['lemma'].lower()))
+    common_ancestor_features.append((feature_priority, text + "ancestor_word=" + common_ancestor_node['word'].lower()))
+    common_ancestor_features.append((feature_priority, text + "ancestor_tag=" + common_ancestor_node['tag'].lower()))
+    common_ancestor_features.append(
+        (feature_priority, text + "ancestor_subtag=" + common_ancestor_node['tag'].lower()[0]))
+    common_ancestor_features.append((feature_priority, text + "ancestor_rel=" + common_ancestor_node['rel'].lower()))
+
+    advise_list = ['can', 'could', 'may', 'might', 'will', 'shall', 'should', 'ought', 'must', 'would']
+    effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
+    mechanism_list = ['reduce', 'increase', 'decrease']
+    int_list = ['interact', 'interaction', 'interfere']
+    #
+    # common_ancestor_features.append(
+    #     (feature_priority, text + "ancestor_int_lemma=" + common_ancestor_node['lemma'].lower() in int_list))
+    # common_ancestor_features.append(
+    #     (feature_priority, text + "ancestor_effect_lemma=" + common_ancestor_node['lemma'].lower() in effect_list))
+    # common_ancestor_features.append(
+    #     (feature_priority, text + "ancestor_advise_lemma=" + common_ancestor_node['lemma'].lower() in advise_list))
+    # common_ancestor_features.append((
+    #     feature_priority, text + "ancestor_mechanism_lemma=" + common_ancestor_node['lemma'].lower() in mechanism_list))
 
     return common_ancestor_features
 
@@ -207,12 +228,29 @@ def get_dependency_path(analysis, first_route, second_route, common_ancestor_ind
     path = "path="
     rel_path = "rel_path="
 
-    route = first_route[:first_route.index(common_ancestor_index) + 1] + second_route[:second_route.index(common_ancestor_index)][::-1]
+    distance = 0
+    route = first_route[:first_route.index(common_ancestor_index) + 1] + second_route[
+                                                                         :second_route.index(common_ancestor_index)][
+                                                                         ::-1]
     for index in route:
-        path += analysis.nodes[index]['lemma']
-        rel_path += analysis.nodes[index]['rel']
+        distance += 1
+        path += ' ' + analysis.nodes[index]['lemma']
+        rel_path += ' ' + analysis.nodes[index]['rel']
 
-    return path, rel_path
+    return path, rel_path, distance
+
+
+def get_entities_info(analysis, first_index, second_index, feature_priority):
+    entities_features = [(feature_priority, "e1_lemma=" + analysis.nodes[first_index]['lemma']),
+                         (feature_priority, "e1_rel=" + analysis.nodes[first_index]['rel']),
+                         (feature_priority, "e1_tag=" + analysis.nodes[first_index]['tag']),
+                         (feature_priority, "e1_subtag=" + analysis.nodes[first_index]['tag'][0]),
+                         (feature_priority, "e2_lemma=" + analysis.nodes[second_index]['lemma']),
+                         (feature_priority, "e2_rel=" + analysis.nodes[second_index]['rel']),
+                         (feature_priority, "e2_tag=" + analysis.nodes[second_index]['tag']),
+                         (feature_priority, "e2_subtag=" + analysis.nodes[second_index]['tag'][0])]
+
+    return entities_features
 
 
 def analyze_dependency_tree(analysis, entities, id_e1, id_e2, feature_priority):
@@ -239,25 +277,37 @@ def analyze_dependency_tree(analysis, entities, id_e1, id_e2, feature_priority):
                     entity_list_tokens.append(token_info)
 
                 second_index = find_second_entity(analysis, word_index, e2_start_off)
-
+                dependency_features.append((0, "equal=" + str(word_index == second_index)))
                 order_features = get_vertical_order_features(analysis, word_index, second_index, feature_priority + 0.2)
                 dependency_features.extend(order_features)
 
-                common_ancestor_index, first_path, second_path = find_common_ancestor(analysis, word_index, second_index)
+                common_ancestor_index, first_path, second_path = find_common_ancestor(analysis, word_index,
+                                                                                      second_index)
                 common_verb_ancestor_index = find_common_verb_ancestor(analysis, word_index, second_index)
 
                 common_ancestor_features = get_common_ancestor_features(analysis.nodes[common_ancestor_index],
                                                                         feature_priority + 0.1)
                 dependency_features.extend(common_ancestor_features)
                 common_ancestor_features = get_common_ancestor_features(analysis.nodes[common_verb_ancestor_index],
-                                                                        feature_priority + 0.3)
+                                                                        feature_priority + 0.3, text="verb_")
                 dependency_features.extend(common_ancestor_features)
-                path, rel_path = get_dependency_path(analysis, first_path, second_path, common_ancestor_index)
 
-                dependency_features.append((feature_priority + 0.4, path))
-                dependency_features.append((feature_priority + 0.4, rel_path))
+                # path, rel_path, distance = get_dependency_path(analysis, first_path, second_path, common_ancestor_index)
+                # dependency_features.append((feature_priority + 0.4, path))
+                # dependency_features.append((feature_priority + 0.4, rel_path))
+                # dependency_features.append((feature_priority + 0.4, "distance=" + str(distance)))
 
-                entities_features = get_entities_info(analysis, word_index, second_index)
+                dependency_features.append(
+                    (feature_priority, "head_nmod=" + str(analysis.nodes[word_index]['rel'] == 'nmod')))
+                dependency_features.append((feature_priority,
+                                            "int_nmod=" + str(analysis.nodes[word_index]['rel'] == 'nmod' and
+                                                              analysis.nodes[common_ancestor_index]['lemma'] in [
+                                                                  'interact', 'interaction',
+                                                                  'implication'] and (analysis.nodes[second_index][
+                                                                                          'rel'] == 'conj'))))
+
+                entities_features = get_entities_info(analysis, word_index, second_index, feature_priority + 0.5)
+                dependency_features.extend(entities_features)
 
                 return dependency_features
     return dependency_features
@@ -273,11 +323,24 @@ def extract_features(analysis, entities, id_e1, id_e2):
     basic_features_list = basic_features(inbetween_text, 2)
     features.extend(basic_features_list)
 
-    # features.append("lemma_root=" + analysis.root['lemma'])
-    # features.append("lemma_tag=" + analysis.root['tag'])
+    features.append((2, "lemma_root=" + analysis.root['lemma']))
+    features.append((2, "lemma_tag=" + analysis.root['tag']))
+
+    advise_list = ['can', 'could', 'may', 'might', 'will', 'shall', 'should', 'ought', 'must', 'would']
+    effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
+    mechanism_list = ['reduce', 'increase', 'decrease']
+    int_list = ['interact', 'interaction', 'interfere']
+
     features.append(
-        (2, "lemma_advise=" + str(analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest'])))
-    features.append((2, "lemma_effect=" + str(analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce'])))
+        (2, "lemma_advise=" + str(
+            analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest', 'can', 'could', 'may',
+                                       'might', 'will', 'shall', 'should', 'ought', 'must', 'would'])))
+    features.append((2, "lemma_effect=" + str(
+        analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce', 'administer', 'potentiate', 'prevent',
+                                   'effect', 'cause'])))
+    features.append(
+        (2, "lemma_int=" + str(analysis.root['lemma'] in int_list)))
+    features.append((2, "lemma_mechanism=" + str(analysis.root['lemma'] in mechanism_list)))
 
     dependency_features = analyze_dependency_tree(analysis, entities, id_e1, id_e2, 3)
     features.extend(dependency_features)
@@ -399,6 +462,7 @@ def parse_features(features_file):
     lines = features_file.readlines()
 
     sent_info = []
+    gold = []
     sent_features = []
     # Strips the newline character
     for line in lines:
@@ -406,13 +470,14 @@ def parse_features(features_file):
         sid, id_e1, id_e2, ddi_type, features = value[0], value[1], value[2], value[3], value[4:]
         sent_info.append((sid, id_e1, id_e2))
         sent_features.append(features)
+        gold.append(ddi_type)
 
-    return sent_info, sent_features
+    return sent_info, gold, sent_features
 
 
 def create_features(quick):
     if quick:
-        print("QUICK")
+        print("Creating features... QUICK")
         # Save Train features
         features_file_name = "train_features"
         input_directory = '../data/Train/'
@@ -433,7 +498,7 @@ def create_features(quick):
         input_directory = '../data/Test-DDI/'
         save_features_quick(features_file_name, input_directory)
     else:
-        print("SLOW")
+        print("Creating features... SLOW")
         # Save Train features
         features_file_name = "train_features"
         input_directory = '../data/Train/'
@@ -463,14 +528,55 @@ def parse_prediction(prediction_file):
     return predictions
 
 
+def create_SVC_model(features, gold):
+    # clf = DecisionTreeClassifier()
+    clf = SVC(gamma='auto')
+
+    encoders = []
+    features = np.asarray(features)
+    for i, col in enumerate(features.T):
+        le = LabelEncoder()
+        le.fit(np.unique(col))
+        features[:, i] = le.transform(features[:, i])
+        encoders.append(le)
+
+    clf.fit(features, gold)
+    pickle_out = open("../pickle/model.pickle", "wb")
+    pickle.dump(clf, pickle_out)
+    pickle_out.close()
+
+    pickle_out = open("../pickle/encoders.pickle", "wb")
+    pickle.dump(encoders, pickle_out)
+    pickle_out.close()
+
+
+def svc_predict(sent_features):
+    pickle_in = open("../pickle/model.pickle", "rb")
+    clf = pickle.load(pickle_in)
+
+    pickle_in = open("../pickle/encoders.pickle", "rb")
+    encoders = pickle.load(pickle_in)
+
+    features = np.asarray(sent_features)
+    for i, (col, le) in enumerate(zip(features.T, encoders)):
+        missing_labels = list(set(np.concatenate((le.classes_, np.unique(col)))) - set(le.classes_))
+        if missing_labels:
+            le.classes_ = np.concatenate((le.classes_, missing_labels))
+        features[:, i] = le.transform(features[:, i])
+    return clf.predict(features)
+
+
 def execute_stage(stage, quick=False):
     if stage == 'Create_features':
         create_features(quick)
 
     elif stage == 'Train':
-        features_file_name = "train_features.features"
-
-        create_model(features_file_name)
+        features_file_name = "train_features.txt"
+        features_file = open('../features/' + features_file_name, 'r')
+        sentences_info, gold, sent_features = parse_features(features_file)
+        features_file.close()
+        # create_model(features_file_name)
+        create_SVC_model(sent_features, gold)
 
     elif stage == 'Predict_Train':
         input_directory = '../data/Train/'
@@ -479,16 +585,18 @@ def execute_stage(stage, quick=False):
 
         features_file_name = "predict_train_features.txt"
         features_file = open('../features/' + features_file_name, 'r')
-        features_without_sent_file_name = "predict_train_features.features"
+        # features_without_sent_file_name = "predict_train_features.features"
 
-        sentences_info, sent_features = parse_features(features_file)
+        sentences_info, gold, sent_features = parse_features(features_file)
         features_file.close()
 
-        prediction_file_name = "Train.test"
-        predict(features_without_sent_file_name, prediction_file_name)
-        prediction_file = open('../output/' + prediction_file_name, 'r')
+        # prediction_file_name = "Train.test"
+        # predict(features_without_sent_file_name, prediction_file_name)
+        # prediction_file = open('../output/' + prediction_file_name, 'r')
+        #
+        # predictions = parse_prediction(prediction_file)
 
-        predictions = parse_prediction(prediction_file)
+        predictions = svc_predict(sent_features)
 
         for prediction, (sid, id_e1, id_e2) in zip(predictions, sentences_info):
             is_ddi = 1 if prediction != 'null' else 0
@@ -507,14 +615,16 @@ def execute_stage(stage, quick=False):
         features_file = open('../features/' + features_file_name, 'r')
         features_without_sent_file_name = "devel_features.features"
 
-        sentences_info, sent_features = parse_features(features_file)
+        sentences_info, gold, sent_features = parse_features(features_file)
         features_file.close()
 
-        prediction_file_name = "Devel.test"
-        predict(features_without_sent_file_name, prediction_file_name)
-        prediction_file = open('../output/' + prediction_file_name, 'r')
+        # prediction_file_name = "Devel.test"
+        # predict(features_without_sent_file_name, prediction_file_name)
+        # prediction_file = open('../output/' + prediction_file_name, 'r')
+        #
+        # predictions = parse_prediction(prediction_file)
 
-        predictions = parse_prediction(prediction_file)
+        predictions = svc_predict(sent_features)
 
         for prediction, (sid, id_e1, id_e2) in zip(predictions, sentences_info):
             is_ddi = 1 if prediction != 'null' else 0
@@ -533,14 +643,16 @@ def execute_stage(stage, quick=False):
         features_file = open('../features/' + features_file_name, 'r')
         features_without_sent_file_name = "test_features.features"
 
-        sentences_info, sent_features = parse_features(features_file)
+        sentences_info, gold, sent_features = parse_features(features_file)
         features_file.close()
 
-        prediction_file_name = "Test.test"
-        predict(features_without_sent_file_name, prediction_file_name)
-        prediction_file = open('../output/' + prediction_file_name, 'r')
+        # prediction_file_name = "Test.test"
+        # predict(features_without_sent_file_name, prediction_file_name)
+        # prediction_file = open('../output/' + prediction_file_name, 'r')
+        #
+        # predictions = parse_prediction(prediction_file)
 
-        predictions = parse_prediction(prediction_file)
+        predictions = svc_predict(sent_features)
 
         for prediction, (sid, id_e1, id_e2) in zip(predictions, sentences_info):
             is_ddi = 1 if prediction != 'null' else 0
@@ -566,11 +678,12 @@ if __name__ == '__main__':
     # Create_features -> Train -> Predict_Train, Predict_Devel or Predict_Test
 
     # If full train process wants to be done:
-    stages = ['Create_features', 'Train', 'Predict_Train']
+    stages = ['Create_features', 'Train', 'Predict_Train', 'Predict_Devel', 'Predict_Test']
     # stages = ['Predict_Train']
 
     # load_pickles()
     # print("PICKLES LOADED")
 
     for stage in stages:
+        print("------------------" + stage + "------------------")
         execute_stage(stage, quick=True)
