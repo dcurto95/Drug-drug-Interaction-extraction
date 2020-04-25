@@ -27,13 +27,40 @@ def evaluate(inputdir, outputfile):
 
 def create_model(features_file_name):
     print("Training MEM...")
+    os.system(
+        "ubuntu run ./megam-64.opt -quiet -nc -nobias -repeat 20 multiclass ../features/" + features_file_name + " > ../models/null_model.dat")
+
     return os.system(
-        "ubuntu run ./megam-64.opt -quiet -nc -nobias -repeat 20 multiclass ../features/" + features_file_name + " > ../models/model.dat")
+        "ubuntu run ./megam-64.opt -quiet -nc -nobias -repeat 20 multiclass ../features/ddi_" + features_file_name + " > ../models/ddi_model.dat")
 
 
-def predict(features_file_name, test_name, model_file_name="../models/model.dat"):
-    return os.system(
-        "ubuntu run ./megam-64.opt -nc -nobias -predict " + model_file_name + " multiclass ../features/" + features_file_name + " > ../output/" + test_name)
+def predict(features_file_name, test_name, features, model_file_name="../models/null_model.dat"):
+    model_file_name = "../models/null_model.dat"
+    os.system(
+        "ubuntu run ./megam-64.opt -nc -nobias -predict " + model_file_name + " multiclass ../features/" + features_file_name + " > ../output/null_" + test_name)
+
+    prediction_file = open('../output/null_' + test_name, 'r')
+    predictions = parse_prediction(prediction_file)
+    prediction_file.close()
+    ddi_index = [x != 'null' for x in predictions]
+
+    aux_features_file = open('../features/auxiliar.features', 'w+')
+    features = np.asarray(features)
+    for feature in features[ddi_index]:
+        print("\t".join(feature), file=aux_features_file)
+    aux_features_file.close()
+
+    model_file_name = "../models/ddi_model.dat"
+    os.system(
+        "ubuntu run ./megam-64.opt -nc -nobias -predict " + model_file_name + " multiclass ../features/auxiliar.features > ../output/ddi_" + test_name)
+    prediction_file = open('../output/ddi_' + test_name, 'r')
+    ddi_predictions = parse_prediction(prediction_file)
+    prediction_file.close()
+
+    predictions = np.asarray(predictions, dtype=object)
+    predictions[ddi_index] = ddi_predictions
+
+    return predictions
 
 
 def add_offset_to_tree(parse, text, offset=0):
@@ -224,7 +251,7 @@ def get_common_ancestor_features(common_ancestor_node, feature_priority, text=""
     int_list = ['interact', 'interaction', 'interfere']
 
     # common_ancestor_features.append(
-    #     (0, common_ancestor_node['lemma'].lower() in int_list))
+    #     (feature_priority, common_ancestor_node['lemma'].lower() in int_list))
     common_ancestor_features.append(
         (feature_priority, common_ancestor_node['lemma'].lower() in int_list))
     common_ancestor_features.append(
@@ -283,12 +310,12 @@ def get_dependency_path(analysis, first_route, second_route, common_ancestor_ind
 def get_entities_info(analysis, first_index, second_index, feature_priority):
     entities_features = [(feature_priority, "e1_lemma=" + analysis.nodes[first_index]['lemma']),
                          (feature_priority, "e1_rel=" + analysis.nodes[first_index]['rel']),
-                         (feature_priority, "e1_tag=" + analysis.nodes[first_index]['tag']),
+                         # (feature_priority, "e1_tag=" + analysis.nodes[first_index]['tag']),
                          (feature_priority, "e1_subtag=" + analysis.nodes[first_index]['tag'][0]),
 
                          (feature_priority, "e2_lemma=" + analysis.nodes[second_index]['lemma']),
                          (feature_priority, "e2_rel=" + analysis.nodes[second_index]['rel']),
-                         (feature_priority, "e2_tag=" + analysis.nodes[second_index]['tag']),
+                         # (feature_priority, "e2_tag=" + analysis.nodes[second_index]['tag']),
                          (feature_priority, "e2_subtag=" + analysis.nodes[second_index]['tag'][0])]
 
     return entities_features
@@ -318,8 +345,8 @@ def analyze_dependency_tree(analysis, entities, id_e1, id_e2, feature_indices):
                     entity_list_tokens.append(token_info)
 
                 second_index = find_second_entity(analysis, word_index, e2_start_off)
-                # dependency_features.append((feature_indices[1], word_index == second_index))
-                order_features = get_vertical_order_features(analysis, word_index, second_index, feature_indices[1])
+                # dependency_features.append((feature_indices[0], word_index == second_index))
+                order_features = get_vertical_order_features(analysis, word_index, second_index, feature_indices[0])
                 dependency_features.extend(order_features)
 
                 common_ancestor_index, first_path, second_path = find_common_ancestor(analysis, word_index,
@@ -327,7 +354,7 @@ def analyze_dependency_tree(analysis, entities, id_e1, id_e2, feature_indices):
                 common_verb_ancestor_index = find_common_verb_ancestor(analysis, word_index, second_index)
 
                 common_ancestor_features = get_common_ancestor_features(analysis.nodes[common_ancestor_index],
-                                                                        feature_indices[2])
+                                                                        feature_indices[1])
                 dependency_features.extend(common_ancestor_features)
 
                 # common_ancestor_features = get_common_ancestor_features(analysis.nodes[common_verb_ancestor_index],
@@ -335,7 +362,7 @@ def analyze_dependency_tree(analysis, entities, id_e1, id_e2, feature_indices):
                 # dependency_features.extend(common_ancestor_features)
 
                 path_features = get_dependency_path(analysis, first_path, second_path, common_ancestor_index,
-                                                    feature_indices[3], entities, id_e1, id_e2)
+                                                    feature_indices[2], entities, id_e1, id_e2)
                 dependency_features.extend(path_features)
 
                 # dependency_features.append(
@@ -347,8 +374,8 @@ def analyze_dependency_tree(analysis, entities, id_e1, id_e2, feature_indices):
                 #                                                   'implication'] and (analysis.nodes[second_index][
                 #                                                                           'rel'] == 'conj'))))
 
-                # entities_features = get_entities_info(analysis, word_index, second_index, feature_priority + 0.5)
-                # dependency_features.extend(entities_features)
+                entities_features = get_entities_info(analysis, word_index, second_index, 1)
+                dependency_features.extend(entities_features)
 
                 return dependency_features
     return dependency_features
@@ -376,24 +403,24 @@ def extract_features(analysis, entities, id_e1, id_e2, indices):
     # features.append((indices[0], "lemma_tag=" + analysis.root['tag']))
     # features.append((indices[0], "lemma_subtag=" + analysis.root['tag'][0]))
 
-    # advise_list = ['can', 'could', 'may', 'might', 'will', 'shall', 'should', 'ought', 'must', 'would']
-    # effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
-    # mechanism_list = ['reduce', 'increase', 'decrease']
-    # int_list = ['interact', 'interaction', 'interfere']
-    #
-    # features.append(
-    #     (2, "lemma_advise=" + str(
-    #         analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest', 'can', 'could', 'may',
-    #                                    'might', 'will', 'shall', 'should', 'ought', 'must', 'would'])))
-    # features.append((2, "lemma_effect=" + str(
-    #     analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce', 'administer', 'potentiate', 'prevent',
-    #                                'effect', 'cause'])))
-    # features.append(
-    #     (2, "lemma_int=" + str(analysis.root['lemma'] in int_list)))
-    # features.append((2, "lemma_mechanism=" + str(analysis.root['lemma'] in mechanism_list)))
+    advise_list = ['can', 'could', 'may', 'might', 'will', 'shall', 'should', 'ought', 'must', 'would']
+    effect_list = ['administer', 'potentiate', 'prevent', 'effect', 'cause']
+    mechanism_list = ['reduce', 'increase', 'decrease']
+    int_list = ['interact', 'interaction', 'interfere']
+
+    features.append(
+        (indices[1], "lemma_advise=" + str(
+            analysis.root['lemma'] in ['advise', 'recommend', 'contraindicate', 'suggest', 'can', 'could', 'may',
+                                       'might', 'will', 'shall', 'should', 'ought', 'must', 'would'])))
+    features.append((indices[1], "lemma_effect=" + str(
+        analysis.root['lemma'] in ['enhance', 'inhibit', 'block', 'produce', 'administer', 'potentiate', 'prevent',
+                                   'effect', 'cause'])))
+    features.append(
+        (indices[1], "lemma_int=" + str(analysis.root['lemma'] in int_list)))
+    features.append((indices[1], "lemma_mechanism=" + str(analysis.root['lemma'] in mechanism_list)))
 
     # Dependency features
-    dependency_features = analyze_dependency_tree(analysis, entities, id_e1, id_e2, indices[1:])
+    dependency_features = analyze_dependency_tree(analysis, entities, id_e1, id_e2, indices[2:])
     features.extend(dependency_features)
 
     features = sorted(features, key=lambda x: x[0])
@@ -447,21 +474,27 @@ def save_features(features_file_name, input_directory, training=False):
 def save_features_quick(features_file_name, input_directory, training=False):
     features_file = open('../features/' + features_file_name + '.txt', 'w+')
     features_file_without_sent = open('../features/' + features_file_name + '.features', 'w+')
+    ddi_features_file_without_sent = open('../features/ddi_' + features_file_name + '.features', 'w+')
 
     name = input_directory.split("/")[-2]
     pickle_in = open("../pickle/" + name + ".pickle", "rb")
     sentence_list = pickle.load(pickle_in)
 
     for sid, entities, analysis, id_e1, id_e2, ddi_type in sentence_list:
-        features = extract_features(analysis, entities, id_e1, id_e2, [2, 3, 4, 5, 1])
+        features = extract_features(analysis, entities, id_e1, id_e2, [2, 3, 4, 1, 5])
 
         print("\t".join([sid, id_e1, id_e2, ddi_type, "\t".join(features)]), file=features_file)
         if training:
-            ddi_dict = {'null': 0, 'effect': 1, 'advise': 2, 'mechanism': 3, 'int': 4}
-            print("\t".join([str(ddi_dict[ddi_type]), "\t".join(features)]), file=features_file_without_sent)
+            aux = ddi_type
+            ddi_type = 'ddi' if ddi_type != 'null' else ddi_type
+            print("\t".join([ddi_type, "\t".join(features)]), file=features_file_without_sent)
+            if ddi_type == 'ddi':
+                print("\t".join([aux, "\t".join(features)]), file=ddi_features_file_without_sent)
         else:
             print("\t".join(features), file=features_file_without_sent)
     features_file.close()
+    features_file_without_sent.close()
+    ddi_features_file_without_sent.close()
 
 
 class DepTree:
@@ -521,6 +554,7 @@ def parse_features(features_file):
         value = line.split("\t")
         sid, id_e1, id_e2, ddi_type, features = value[0], value[1], value[2], value[3], value[4:]
         sent_info.append((sid, id_e1, id_e2))
+        features[-1] = features[-1][:-1]
         sent_features.append(features)
         gold.append(ddi_type)
 
@@ -682,17 +716,16 @@ def execute_stage(stage, learner="Tree", quick=False):
 
         if learner != "Tree":
             prediction_file_name = "Train.test"
-            predict(features_without_sent_file_name, prediction_file_name)
-            prediction_file = open('../output/' + prediction_file_name, 'r')
-
-            predictions = parse_prediction(prediction_file)
+            predictions = predict(features_without_sent_file_name, prediction_file_name, sent_features)
+            # prediction_file = open('../output/' + prediction_file_name, 'r')
+            #
+            # predictions = parse_prediction(prediction_file)
         else:
             predictions = svc_predict(sent_features)
 
         for prediction, (sid, id_e1, id_e2) in zip(predictions, sentences_info):
             is_ddi = 1 if prediction != 'null' else 0
-            ddi_dict = {'0': 'null', '1': 'effect', '2': 'advise', '3': 'mechanism', '4': 'int'}
-            print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_dict[prediction]]), file=output_file)
+            print("|".join([sid, id_e1, id_e2, str(is_ddi), prediction]), file=output_file)
 
         # Close the file
         output_file.close()
@@ -711,17 +744,16 @@ def execute_stage(stage, learner="Tree", quick=False):
         features_file.close()
         if learner != "Tree":
             prediction_file_name = "Devel.test"
-            predict(features_without_sent_file_name, prediction_file_name)
-            prediction_file = open('../output/' + prediction_file_name, 'r')
-
-            predictions = parse_prediction(prediction_file)
+            predictions = predict(features_without_sent_file_name, prediction_file_name, sent_features)
+            # prediction_file = open('../output/' + prediction_file_name, 'r')
+            #
+            # predictions = parse_prediction(prediction_file)
         else:
             predictions = svc_predict(sent_features)
 
         for prediction, (sid, id_e1, id_e2) in zip(predictions, sentences_info):
             is_ddi = 1 if prediction != 'null' else 0
-            ddi_dict = {'0': 'null', '1': 'effect', '2': 'advise', '3': 'mechanism', '4': 'int'}
-            print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_dict[prediction]]), file=output_file)
+            print("|".join([sid, id_e1, id_e2, str(is_ddi), prediction]), file=output_file)
 
         # Close the file
         output_file.close()
@@ -741,17 +773,16 @@ def execute_stage(stage, learner="Tree", quick=False):
 
         if learner != "Tree":
             prediction_file_name = "Test.test"
-            predict(features_without_sent_file_name, prediction_file_name)
-            prediction_file = open('../output/' + prediction_file_name, 'r')
-
-            predictions = parse_prediction(prediction_file)
+            predictions = predict(features_without_sent_file_name, prediction_file_name, sent_features)
+            # prediction_file = open('../output/' + prediction_file_name, 'r')
+            #
+            # predictions = parse_prediction(prediction_file)
         else:
             predictions = svc_predict(sent_features)
 
         for prediction, (sid, id_e1, id_e2) in zip(predictions, sentences_info):
             is_ddi = 1 if prediction != 'null' else 0
-            ddi_dict = {'0': 'null', '1': 'effect', '2': 'advise', '3': 'mechanism', '4': 'int'}
-            print("|".join([sid, id_e1, id_e2, str(is_ddi), ddi_dict[prediction]]), file=output_file)
+            print("|".join([sid, id_e1, id_e2, str(is_ddi), prediction]), file=output_file)
 
         # Close the file
         output_file.close()

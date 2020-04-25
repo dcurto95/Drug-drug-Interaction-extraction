@@ -128,7 +128,7 @@ def split_offset(offset):
 
 
 if __name__ == '__main__':
-    input_directory = '../data/Train/'
+    input_directory = '../data/Devel/'
     parser = CoreNLPDependencyParser(url="http://localhost:9000")
 
     sentences = {}
@@ -173,7 +173,7 @@ if __name__ == '__main__':
         truth[value[0]].append(aux)
 
     # Using readlines()
-    file1 = open('../output/task9.2_train-out_1.txt', 'r')
+    file1 = open('../output/task9.2_devel-out_1.txt', 'r')
     Lines = file1.readlines()
 
     output = {}
