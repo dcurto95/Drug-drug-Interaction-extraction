@@ -128,7 +128,7 @@ def split_offset(offset):
 
 
 if __name__ == '__main__':
-    input_directory = '../data/Train/'
+    input_directory = '../data/Devel/'
     parser = CoreNLPDependencyParser(url="http://localhost:9000")
 
     sentences = {}
